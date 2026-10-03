@@ -1,0 +1,65 @@
+# 源管家 · 需特殊上网（代理/科学上网）域名库（可编辑本地文件）
+# ==========================================================
+# 用途：源测速时若命中本库中的域名，或域名 DNS 解析失败 / 连接超时，
+#       则标记该源为「需特殊上网」——提醒你不是源坏了，而是直连走不通。
+#
+# 语法：每行一个域名（或域名后缀），以 # 开头为注释，空行忽略。
+#   · 子域名自动匹配：写 `google.com` 可命中 `www.google.com` / `apis.google.com`；
+#   · 支持通配符前缀 `*.example.com`（等价于后缀匹配）；
+#   · 大小写不敏感。
+#
+# 修改后点「源管家 → 管理站点 → 重新载入词库」即生效。
+
+# ---- 常见被墙的公共站点 ----
+google.com
+googleapis.com
+gstatic.com
+googlevideo.com
+youtube.com
+youtu.be
+ytimg.com
+facebook.com
+fbcdn.net
+instagram.com
+twitter.com
+x.com
+twimg.com
+telegram.org
+t.me
+whatsapp.com
+wikipedia.org
+wikimedia.org
+
+# ---- 开发 / 托管（大陆常需代理）----
+github.com
+githubusercontent.com
+githubassets.com
+jsdelivr.net
+raw.githubusercontent.com
+img.shields.io
+docker.io
+docker.com
+ghcr.io
+gitlab.com
+
+# ---- 影视 / 流媒体（常见境外源）----
+netflix.com
+nflxvideo.net
+disneyplus.com
+hulu.com
+primevideo.com
+amazonaws.com
+cloudfront.net
+vimeo.com
+dailymotion.com
+twitch.tv
+spotify.com
+soundcloud.com
+
+# ---- 网盘 / 其它 ----
+mega.nz
+mediafire.com
+dropbox.com
+onedrive.live.com
+pornhub.com
+xvideos.com

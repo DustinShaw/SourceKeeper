@@ -1,0 +1,40 @@
+# 源管家 · 敏感词库 / 分类识别词库（可编辑本地文件）
+# =================================================
+# 语法：每行 `分类 = 词1, 词2, 词3`
+#   · 以 # 开头的行为注释，空行忽略；
+#   · 中文词直接写；英文词按「整词」匹配（前后为字母数字边界才算命中）；
+#   · 修改本文件后，在「源管家 → 管理站点 → 重新载入词库」即生效（无需重开程序）。
+#
+# 分类 key（勿改，程序按此识别）：
+#   adult   = 成人 R18
+#   duanju  = 短剧
+#   live    = 直播 / 电视
+#   music   = 音乐（MV / 歌单 / 音乐点播）
+#   audio   = 音频（有声书 / 广播剧 / 播客 / ASMR）
+#   vod     = 点播（影视点播，兜底类，一般无需列举）
+#
+# 提示：宁可少量边界站点被标出，也好过漏标；误报的站点可在界面里手动改回。
+
+[adult]
+中文 = 成人, 色情, 裸体, 裸聊, 裸照, 性爱, 做爱, 性交, 性奴, 淫乱, 淫荡, 淫水, 三级片, A片, 无码, 有码, 中出, 内射, 颜射, 麻豆, 18禁, 限制级, 援交, 约炮, 一夜情, 人妻, 少妇, 熟女, 波多野, 苍井空, 吉泽明步, 天海翼, 番号, 老司机, 色站, AV女优, 女优, 援交妹, 偷情, 约啪, 欲女
+英文 = porn, pornhub, xvideos, xnxx, xhamster, youporn, redtube, hentai, javhd, nsfw, adult, nude, naked, milf, gangbang, bukkake, creampie, fetish, erotic, sexvideo, sextube
+
+[duanju]
+中文 = 短剧, 微短剧, 短剧场
+英文 = duanju, short drama, shortdrama
+
+[live]
+中文 = 直播, 秀场, 直播间, 主播
+英文 = livetv, live tv, iptv, live stream, live-stream, streaming
+
+[music]
+中文 = 音乐, 歌曲, 歌单, 专辑, 歌手, 音乐台, 无损音乐, mv, ktv, 音乐盒, 听歌, 唱歌, 点歌, 歌曲库, 音乐库, 音悦, 汽水音乐, 网易云, QQ音乐, 酷狗, 酷我, 咪咕音乐, 音乐视频, 演唱, 音乐会, 歌单广场, 榜单
+英文 = music, song, songs, playlist, album, singer, ktv, mv, mp3, flac, musicvideo, music-video, songlist, vocaloid
+
+[audio]
+中文 = 音频, 有声, 有声书, 听书, 广播剧, 播客, 电台, 相声, 评书, 戏曲, 音乐, 睡眠, 助眠, 有声小说, 有声读物, 播讲, 朗读, 讲故事, 儿童故事, 曲艺, 广播, 音频播客, 语音, 电台fm, 网络电台, 录音, 音频节目
+英文 = audio, audiobook, podcast, radio, asmr, fm, sound, mp3, audioplay, spoken, voice, audio-book, radio-station, streaming-audio
+
+[vod]
+中文 = 影视, 电影, 电视剧, 综艺, 动漫, 剧集, 点播
+英文 = movie, movies, video, vod, tv, anime, drama

@@ -1,0 +1,59 @@
+# 构建产物 / 打包临时
+*.exe
+dist/
+build/
+build_win7/
+__pycache__/
+*.pyc
+# 注意：PyInjector.spec / PyInjector-win7.spec 是手工维护的构建文件，必须入库，勿加 *.spec
+
+# 历史备份与垃圾
+*.bak
+*.bak.*
+py_trash/
+build_run2.txt
+backups/
+
+# 虚拟环境（PySide6 / PySide2）
+envs/
+venv/
+.venv/
+
+# 工作区数据（开发记忆，不公开）
+.workbuddy/
+
+# 本机发布/更新脚本（含 GitHub 凭证引导流程，不公开）
+scripts/
+
+# 个人影视仓配置（含订阅 URL/api，敏感）
+py.json
+py/本地影仓5.0.json
+
+# 用户数据：py/ 影视 spider 脚本（默认排除，保持仓库为纯工具源码）
+py/
+
+# 编辑器 / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# AI 生图原始稿（封面成品已裁剪为 cover.png）
+generated-images/
+publish_log.txt
+update_log.txt
+_motw_check.txt
+
+# 构建/测试/诊断产生的日志与输出（本地有用，不入仓库）
+*_log.txt
+*_out*.txt
+*_run*.txt
+dirlist.txt
+qt_check.txt
+regress_all.txt
+regress_check.txt
+_tmp_pl/
+
+# 一次性开发脚本（历史遗留，不入仓库）
+deploy_v14.py
+diag_adult.py

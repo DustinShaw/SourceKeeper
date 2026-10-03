@@ -1,0 +1,24 @@
+# Windows 7 版依赖（必须用 Python 3.9 —— 3.9 是微软最后一个支持 Win7 的 Python）
+# 本机隔离环境示例：
+#   C:/Users/<user>/.workbuddy/binaries/python/envs/win39/python.exe -m pip install -r requirements-win7.txt
+# 说明：
+#   PySide2 5.15.2.2 = Qt5 5.15（Qt5 官方支持 Win7）+ Python 3.9，是能在 Win7 上跑的最后一档
+#   PyInstaller 5.13.2 = 5.x 末版，bootloader 不依赖 Win8+ 的 API-Set；PyInstaller 6 起要求 Win10+
+#   upx 会把 exe 压到 ~30MB，若目标机装不上可先去掉本文件的注释再看效果
+PySide2==5.15.2.1
+shiboken2==5.15.2.1
+PyInstaller==5.13.2
+
+# 源测活 + 配置解析用到的第三方（与 PyInjector.spec 的 hiddenimports 对应）
+requests
+urllib3
+charset-normalizer
+idna
+certifi
+pyquery
+cssselect
+beautifulsoup4
+soupsieve
+lxml
+ujson
+cachetools
