@@ -59,7 +59,8 @@ ok("状态标签显示已加载/站点数/配置文件名",
    and "py.json" in win.lbl_status.text(), win.lbl_status.text())
 
 # 指定不存在的配置文件 → 状态标签显示未找到，标题不变
-win.ent_cfg.setText("no_such_cfg.json")
+# （2026-10-04：配置文件框由 QLineEdit 升级为可编辑 QComboBox，API 同步更新）
+win.ent_cfg.setCurrentText("no_such_cfg.json")
 win.load_repo()
 app.processEvents()
 t2 = win.windowTitle()
@@ -68,7 +69,7 @@ ok("错误时标题仍为仓库路径—PyInjector", ("— " + I.APP_NAME) in t2
 ok("错误时状态标签显示未找到配置文件", "未找到配置文件" in win.lbl_status.text(), win.lbl_status.text())
 
 # 恢复有效配置 → 状态标签恢复
-win.ent_cfg.setText("py.json")
+win.ent_cfg.setCurrentText("py.json")
 win.load_repo()
 app.processEvents()
 t3 = win.windowTitle()

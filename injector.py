@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "2610041930"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "2610042023"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
 APP_TITLE_SUFFIX = "%s v%s" % (APP_NAME, APP_VERSION)   # 窗体标题统一后缀（所有标题栏都标注版本）
@@ -1238,14 +1238,23 @@ def run_gui():
             h.addWidget(QPushButton("选择…", clicked=self.choose_repo))
             root.addLayout(h)
 
-            # 配置文件：留空自动识别，也可手动指定文件名（不限定 py.json，便于通用）
+            # 配置文件：可编辑下拉框——点 ▼ 直接列出仓库目录里的候选 JSON（打分排序），
+            # 点选即加载；也支持手动输入，留空=自动识别（不限定 py.json，便于通用）
             hc = QHBoxLayout()
             hc.addWidget(QLabel("配置文件:"))
-            self.ent_cfg = QLineEdit("")
-            self.ent_cfg.setPlaceholderText("留空=自动识别（也可手动填文件名，如 py.json / xxx.json）")
+            self.ent_cfg = QComboBox()
+            self.ent_cfg.setEditable(True)
+            self.ent_cfg.setInsertPolicy(QComboBox.NoInsert)
+            self.ent_cfg.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+            self.ent_cfg.activated.connect(lambda _i: self.load_repo())
+            _le = self.ent_cfg.lineEdit()
+            if _le is not None:
+                _le.setPlaceholderText("留空=自动识别（点右侧▼下拉选择，也可手动填文件名）")
+                _le.returnPressed.connect(self.load_repo)
             hc.addWidget(self.ent_cfg, 1)
             hc.addWidget(QPushButton("自动识别", clicked=self.autodetect_cfg))
             root.addLayout(hc)
+            self._refresh_cfg_candidates()
 
             # ---- 顶部工具栏：动词优先 + 图标（替代原四步编号 GroupBox，去误导性编号）----
             # 按「维度」分两行，避免 13 个按钮挤成一行把窗口撑宽：
@@ -1387,10 +1396,22 @@ def run_gui():
             QApplication.processEvents()
 
         # ---- 仓库加载 ----
+        def _refresh_cfg_candidates(self):
+            """把仓库目录里的候选配置文件填进「配置文件」下拉框（保留当前文本）。
+            目录取 ent_repo 输入框的实时文本（与 _resolve_cfg 同源）。"""
+            try:
+                cur = self.ent_cfg.currentText()
+                names = list_config_candidates(self.ent_repo.text().strip())
+                self.ent_cfg.clear()
+                self.ent_cfg.addItems(names)
+                self.ent_cfg.setCurrentText(cur)
+            except Exception:
+                pass
+
         def _resolve_cfg(self):
             """根据用户输入/自动识别确定配置文件。返回 (cfg, 错误信息或 None)。"""
             self.repo_dir = self.ent_repo.text().strip()
-            hint = self.ent_cfg.text().strip() if hasattr(self, "ent_cfg") else ""
+            hint = self.ent_cfg.currentText().strip() if hasattr(self, "ent_cfg") else ""
             cfg = guess_config_file(self.repo_dir, hint or None)
             if cfg is None:
                 if hint:
@@ -1399,8 +1420,8 @@ def run_gui():
             self.cfg_file = cfg
             self.base_dir = cfg_base_dir(self.repo_dir, cfg)
             # 回显识别结果（不覆盖用户手输的有效值——两者一致时无感）
-            if self.ent_cfg.text().strip() != cfg:
-                self.ent_cfg.setText(cfg)
+            if self.ent_cfg.currentText().strip() != cfg:
+                self.ent_cfg.setCurrentText(cfg)
             return cfg, None
 
         def _repo_title(self):
@@ -1433,6 +1454,7 @@ def run_gui():
                 self._set_status("未找到配置文件")
                 self.log_msg(err, "err")
                 return
+            self._refresh_cfg_candidates()
             self.load_repo()
 
         def load_repo(self):
@@ -1472,6 +1494,7 @@ def run_gui():
                     QSettings("PyInjector", "PyInjector").setValue("repo_dir", d)
                 except Exception:
                     pass
+                self._refresh_cfg_candidates()
                 self.load_repo()
 
         # ---- 列表刷新 ----
@@ -4016,6 +4039,7 @@ def run_gui():
                 QMessageBox.critical(self, "错误", "写入失败：%s\n%s" % (out, ex))
                 return
             self._toast("已导出 %d 条（剔除 %d 条）" % (len(keep), removed))
+            self._refresh_cfg_candidates()  # 新配置文件加入下拉候选
             QMessageBox.information(
                 self, "完成",
                 "已导出到：%s\n\n保留 %d 个站点，剔除 %d 个。"
@@ -4039,6 +4063,7 @@ def run_gui():
                 return
             self._toast("已导出：纯净版 %d 条 / 完整版 %d 条"
                         % (r["pure_kept"], r["total"]))
+            self._refresh_cfg_candidates()  # 新配置文件加入下拉候选
             QMessageBox.information(
                 self, "完成",
                 "已导出两套配置：\n\n· 纯净版（剔除成人 %d 个）：%s\n· 完整版（保留全部 %d 个）：%s"

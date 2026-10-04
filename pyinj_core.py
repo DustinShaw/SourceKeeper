@@ -259,7 +259,7 @@ def guess_config_file(repo_dir, hint=None):
     cands = []
     for cur, subdirs, files in os.walk(repo_dir):
         rel = os.path.relpath(cur, repo_dir)
-        depth = 0 if rel == "." else rel.count(os.sep)
+        depth = 0 if rel == "." else rel.count(os.sep) + 1
         if depth > 1:
             subdirs[:] = []
             continue
@@ -296,6 +296,59 @@ def guess_config_file(repo_dir, hint=None):
     if ap.startswith(ar + os.sep):
         return os.path.relpath(ap, ar).replace("\\", "/")
     return ap
+
+
+def list_config_candidates(repo_dir, limit=24):
+    """扫描仓库目录（根 + 一级子目录）里的候选配置文件，供 GUI 下拉框展示。
+    与 guess_config_file 同一套打分规则（有效站点数 + py.json/含py 命名加分 + spider 字段），
+    返回按分数降序的相对路径名列表；打分并列时按文件名排序保证稳定。
+    无任何有效配置时退化为全部 *.json 文件名（字母序）；目录无效或异常返回 []。
+    """
+    if not repo_dir or not os.path.isdir(repo_dir):
+        return []
+    try:
+        cands = []
+        for cur, subdirs, files in os.walk(repo_dir):
+            rel = os.path.relpath(cur, repo_dir)
+            depth = 0 if rel == "." else rel.count(os.sep) + 1
+            if depth > 1:
+                subdirs[:] = []
+                continue
+            for f in files:
+                if f.lower().endswith(".json") and not f.endswith(".bak"):
+                    cands.append(os.path.join(cur, f))
+        scored = []
+        for p in cands:
+            try:
+                data = parse_jsonc(read_text(p))
+            except Exception:
+                continue
+            if not isinstance(data, dict):
+                continue
+            sites = data.get("sites")
+            if not isinstance(sites, list) or not sites:
+                continue
+            ok = sum(1 for s in sites[:50]
+                     if isinstance(s, dict) and ("key" in s or "api" in s))
+            if ok == 0:
+                continue
+            score = ok
+            name = os.path.basename(p).lower()
+            if name == CONFIG_NAME:
+                score += 100
+            elif "py" in name:
+                score += 10
+            if data.get("spider"):
+                score += 5
+            rel = os.path.relpath(p, repo_dir).replace("\\", "/")
+            scored.append((score, rel))
+        if not scored:
+            return sorted(os.path.relpath(p, repo_dir).replace("\\", "/")
+                          for p in cands)[:limit]
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        return [r for _, r in scored][:limit]
+    except Exception:
+        return []
 
 
 def load_repo(repo_dir, cfg_name=CONFIG_NAME):
