@@ -879,20 +879,41 @@ def deduplicate_sites(text):
 #   - jav（英文裸词）：哔哩影视的混淆加密串里恰好含 "jav" 子串，非真 JAV
 # 保留全部明确指向成人内容的词（成人/色情/无码/三级/少妇/偷情/裸体/裸聊…），
 # 宁可少量边界站点（如含 19+ / erotic / nude 分类的站点）被标出，也好过漏标。
-_ADULT_ZH = (
-    "成人", "色情", "裸体", "裸聊", "裸照", "性爱", "做爱", "性交", "性奴",
-    "淫乱", "淫荡", "淫水", "三级片", "A片", "无码", "有码", "中出", "内射", "颜射",
-    "麻豆", "18禁", "限制级", "援交", "约炮", "一夜情", "人妻", "少妇", "熟女",
-    "制服诱惑", "SM", "凌辱", "迷奸", "肛交", "口交", "乳交", "足交", "群交", "轮奸",
-    "波多野", "苍井空", "吉泽明步", "天海翼", "番号", "老司机", "色站",
-    "AV女优", "女优", "援交妹", "偷情", "约啪", "欲女",
+# 词库单一来源（2026-10-04）：与 pyinj_kw 内置兜底词库共用同一份成人词条，
+# 此前两处各自维护出现过不同步，现统一取自 pyinj_kw._FALLBACK。
+import pyinj_kw as _kwmod
+_ADULT_ZH = _kwmod._FALLBACK["adult"]["zh"]
+_ADULT_EN = _kwmod._FALLBACK["adult"]["en"]
+_ADULT_JA = _kwmod._FALLBACK["adult"]["ja"]
+_ADULT_KO = _kwmod._FALLBACK["adult"]["ko"]
+_ADULT_RU = _kwmod._FALLBACK["adult"]["ru"]
+_ADULT_TH = _kwmod._FALLBACK["adult"]["th"]
+# (语言, 词表, 是否整词边界) —— 与 pyinj_kw._LANGS/_LANG_BOUNDARY 同口径：
+# zh/ja/ko/ru/th 子串匹配（无空格分词或词形变化丰富），en 用 \b 整词边界。
+_ADULT_ALL = (
+    ("zh", _ADULT_ZH, False),
+    ("en", _ADULT_EN, True),
+    ("ja", _ADULT_JA, False),
+    ("ko", _ADULT_KO, False),
+    ("ru", _ADULT_RU, False),
+    ("th", _ADULT_TH, False),
 )
-_ADULT_EN = (
-    "porn", "pornhub", "xvideos", "xnxx", "xhamster", "youporn", "redtube",
-    "hentai", "javhd", "nsfw", "adult", "nude", "naked", "milf",
-    "gangbang", "bukkake", "creampie", "fetish", "erotic", "sexvideo", "sextube",
-    "onlyfans", "camgirl", "sexuality",
-)
+
+
+def _kw_hit(hay, words, boundary):
+    """单语言桶命中：boundary=True 用 \\b 整词边界，否则子串。返回命中词或 None。"""
+    for w in words:
+        if not w:
+            continue
+        if w in hay:
+            if not boundary:
+                return w
+            try:
+                if re.search(r"\b" + re.escape(w) + r"\b", hay):
+                    return w
+            except Exception:
+                return w
+    return None
 
 
 def api_to_path(repo_dir, api):
@@ -931,20 +952,43 @@ def resolve_spider_path(base_dir, api, alt_dir=None):
     return api_to_path(base_dir or alt_dir or ".", api)
 
 
-def detect_adult(py_path, site_name=""):
-    """读取 .py 文件内容与站点名，判断是否涉及成人内容。
+def entry_extra_text(entry):
+    """把条目的 ext 字段归一为可参与关键词匹配的文本（dict/list → JSON 串）。
+    直连站（type 0/1）的 ext 里常藏分类/地址信息，是站名之外的重要检测素材。"""
+    try:
+        v = (entry or {}).get("ext")
+    except Exception:
+        return ""
+    if v is None:
+        return ""
+    if isinstance(v, (dict, list)):
+        try:
+            return json.dumps(v, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return str(v)
+    return str(v)
+
+
+def entry_deep_url(entry):
+    """返回可做「深度检测」拉取的 http(s) api 地址；非 URL（本地 .py 路径等）返回 ''。"""
+    a = str((entry or {}).get("api") or "").strip()
+    return a if a.lower().startswith(("http://", "https://")) else ""
+
+
+def detect_adult(py_path, site_name="", extra_text=""):
+    """读取 .py 文件内容与站点名（可叠加 ext/API 拉取文本），判断是否涉及成人内容。
     返回 (是否成人, 命中的关键词或 None)。"""
     parts = [site_name or ""]
+    if extra_text:
+        parts.append(str(extra_text))
     try:
         parts.append(read_text(py_path))
     except Exception:
         pass
     hay = "\n".join(parts).lower()
-    for w in _ADULT_ZH:
-        if w in hay:
-            return True, w
-    for w in _ADULT_EN:
-        if re.search(r"\b" + re.escape(w) + r"\b", hay):
+    for _lang, words, boundary in _ADULT_ALL:
+        w = _kw_hit(hay, words, boundary)
+        if w is not None:
             return True, w
     return False, None
 
@@ -958,10 +1002,12 @@ _DUANJU_ZH = ("短剧", "微短剧", "短剧场")
 _DUANJU_EN = ("duanju", "short drama", "shortdrama")
 
 
-def detect_duanju(py_path, site_name=""):
-    """读取 .py 文件内容与站点名，判断是否为短剧类源。
+def detect_duanju(py_path, site_name="", extra_text=""):
+    """读取 .py 文件内容与站点名（可叠加 ext/API 拉取文本），判断是否为短剧类源。
     返回 (是否短剧, 命中的关键词或 None)。"""
     parts = [site_name or ""]
+    if extra_text:
+        parts.append(str(extra_text))
     try:
         parts.append(read_text(py_path))
     except Exception:
@@ -988,10 +1034,12 @@ _LIVE_ZH = ("直播", "秀场", "直播间", "主播")
 _LIVE_EN = ("livetv", "live tv", "iptv", "live stream", "live-stream", "streaming")
 
 
-def detect_live(py_path, site_name=""):
-    """读取 .py 文件内容与站点名，判断是否为直播类源。
+def detect_live(py_path, site_name="", extra_text=""):
+    """读取 .py 文件内容与站点名（可叠加 ext/API 拉取文本），判断是否为直播类源。
     返回 (是否直播, 命中的关键词或 None)。"""
     parts = [site_name or ""]
+    if extra_text:
+        parts.append(str(extra_text))
     try:
         parts.append(read_text(py_path))
     except Exception:
@@ -1004,6 +1052,43 @@ def detect_live(py_path, site_name=""):
         if re.search(r"\b" + re.escape(w) + r"\b", hay):
             return True, w
     return False, None
+
+
+# 深度检测用的移动端 UA（部分采集站接口对桌面 UA 返回空/403，影视仓自身即移动端）
+_DEEP_UA = ("Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+
+
+def deep_fetch_text(url, timeout=8, max_bytes=262144):
+    """深度检测：拉取直连站 api 页面内容供关键词匹配。
+    短超时 + 限长（默认 256KB）+ 任何异常返回空串——检测永远不因网络问题卡死/报错。
+    绕过系统/环境代理直连（与网络体检「直连优先」口径一致；采集站接口均为国内直连，
+    本机代理对 localhost/国内接口反而会造成 502 之类假失败）。
+    调用方负责并发/频度（当前为 worker 内串行调用）。"""
+    u = str(url or "").strip()
+    if not u.lower().startswith(("http://", "https://")):
+        return ""
+    try:
+        req = urllib.request.Request(
+            u, headers={"User-Agent": _DEEP_UA, "Accept": "*/*"})
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}))  # 显式空代理 = 直连
+        with opener.open(req, timeout=timeout) as resp:
+            data = resp.read(max_bytes)
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = data.decode("gbk", errors="ignore")  # 部分老采集站返回 GBK
+        if "\\u" in text:
+            # 不少 CMS 接口返回 \uXXXX 转义 JSON——不解开则中文关键词全部落空
+            try:
+                text = re.sub(r"\\u([0-9a-fA-F]{4})",
+                              lambda m: chr(int(m.group(1), 16)), text)
+            except Exception:
+                pass
+        return text
+    except Exception:
+        return ""
 
 
 def default_search_roots(repo_dir, cfg_name):

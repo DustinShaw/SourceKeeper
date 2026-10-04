@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "2026 国庆特别版"   # 临时：国庆特别版（exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "2610041930"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
 APP_TITLE_SUFFIX = "%s v%s" % (APP_NAME, APP_VERSION)   # 窗体标题统一后缀（所有标题栏都标注版本）
@@ -355,9 +355,11 @@ def run_cli(argv):
                 continue
             py, _by_search = resolve_spider_path_resilient(base_dir, e.get("api", ""), repo, _name_map)
             if not os.path.isfile(py):
-                is_ad, kw = detect_adult("", e.get("name", ""))  # 退化为仅按站点名
+                is_ad, kw = detect_adult("", e.get("name", ""),
+                                         extra_text=entry_extra_text(e))  # 退化为站点名+ext
             else:
-                is_ad, kw = detect_adult(py, e.get("name", ""))
+                is_ad, kw = detect_adult(py, e.get("name", ""),
+                                         extra_text=entry_extra_text(e))
                 if _by_search:
                     print("  (自动遍历找到 .py：%s)" % py)
             if not is_ad:
@@ -804,7 +806,7 @@ def run_gui():
         search_progress = Signal(int, int, str)  # 遍历搜索 .py 阶段进度（done, 0, dirname）
 
         def __init__(self, dialog, base_dir, entries, alt_dir=None, repo_dir=None,
-                     cfg_name=None, allow_prompt=True):
+                     cfg_name=None, allow_prompt=True, deep=False):
             super().__init__(dialog)
             self.dialog = dialog
             self.base_dir = base_dir
@@ -813,6 +815,7 @@ def run_gui():
             self.repo_dir = repo_dir
             self.cfg_name = cfg_name
             self.allow_prompt = allow_prompt
+            self.deep = bool(deep)   # 深度检测：对 http(s) 直连站拉取 api 内容补充判定
             self._resolved = {}  # key -> py_path
             self._name_map = {}  # 遍历搜索得到的 {小写文件名: 路径}
 
@@ -826,9 +829,10 @@ def run_gui():
                 m = {}
                 for i, e in enumerate(self.entries):
                     _k = str(e.get("key", ""))
-                    is_ad, kw = detect_adult("", e.get("name", ""))
-                    is_dj, dkw = detect_duanju("", e.get("name", ""))
-                    is_lv, lkw = detect_live("", e.get("name", ""))
+                    _x = entry_extra_text(e)
+                    is_ad, kw = detect_adult("", e.get("name", ""), extra_text=_x)
+                    is_dj, dkw = detect_duanju("", e.get("name", ""), extra_text=_x)
+                    is_lv, lkw = detect_live("", e.get("name", ""), extra_text=_x)
                     m[_k] = (is_ad, kw, is_dj, dkw, is_lv, lkw)
                     self.item_done.emit(_k, is_ad, kw, is_dj, dkw, is_lv, lkw)
                     self.progress.emit(i + 1, total, e.get("name", ""))
@@ -920,14 +924,36 @@ def run_gui():
                 # type:1 直连 / 0 XML / 4 目录 / 远程源一律只按站点名判定
                 # （这些源本来就没有本地文件内容可读）。expects_local_file 为权威口径。
                 if expects_local_file(e) and os.path.isfile(_py):
-                    is_ad, kw = detect_adult(_py, e.get("name", ""))
-                    is_dj, dkw = detect_duanju(_py, e.get("name", ""))
-                    is_lv, lkw = detect_live(_py, e.get("name", ""))
+                    is_ad, kw = detect_adult(_py, e.get("name", ""),
+                                             extra_text=entry_extra_text(e))
+                    is_dj, dkw = detect_duanju(_py, e.get("name", ""),
+                                               extra_text=entry_extra_text(e))
+                    is_lv, lkw = detect_live(_py, e.get("name", ""),
+                                             extra_text=entry_extra_text(e))
                 else:
-                    # 非本地 Spider 或找不到文件：退化为仅按站点名判定
-                    is_ad, kw = detect_adult("", e.get("name", ""))
-                    is_dj, dkw = detect_duanju("", e.get("name", ""))
-                    is_lv, lkw = detect_live("", e.get("name", ""))
+                    # 非本地 Spider 或找不到文件：先按「站点名 + ext 字段」判定。
+                    # 深度检测开启且三项未全部命中时，再拉取 api 页面内容补充判定
+                    # （每站最多一次网络请求，已命中的项不重复判定以省时间）。
+                    _extra = entry_extra_text(e)
+                    is_ad, kw = detect_adult("", e.get("name", ""), extra_text=_extra)
+                    is_dj, dkw = detect_duanju("", e.get("name", ""), extra_text=_extra)
+                    is_lv, lkw = detect_live("", e.get("name", ""), extra_text=_extra)
+                    if (self.deep and not self._aborted()
+                            and not (is_ad and is_dj and is_lv)):
+                        _u = entry_deep_url(e)
+                        if _u:
+                            _fetched = deep_fetch_text(_u)
+                            if _fetched:
+                                _dx = (_extra + "\n" + _fetched) if _extra else _fetched
+                                if not is_ad:
+                                    is_ad, kw = detect_adult(
+                                        "", e.get("name", ""), extra_text=_dx)
+                                if not is_dj:
+                                    is_dj, dkw = detect_duanju(
+                                        "", e.get("name", ""), extra_text=_dx)
+                                if not is_lv:
+                                    is_lv, lkw = detect_live(
+                                        "", e.get("name", ""), extra_text=_dx)
                 m[_k] = (is_ad, kw, is_dj, dkw, is_lv, lkw)
                 self.item_done.emit(_k, is_ad, kw, is_dj, dkw, is_lv, lkw)
                 self.progress.emit(i + 1, total, e.get("name", ""))
@@ -2097,7 +2123,8 @@ def run_gui():
             self._worker = _AdultScanWorker(
                 self, self.base_dir, self.entries,
                 alt_dir=self.repo_dir, repo_dir=self.repo_dir,
-                cfg_name=self.cfg_file, allow_prompt=True)
+                cfg_name=self.cfg_file, allow_prompt=True,
+                deep=bool(self.cb_deep.isChecked()))
             self._worker.progress.connect(self._on_scan_progress)
             self._worker.item_done.connect(self._on_scan_item)
             self._worker.finished_map.connect(self._on_scan_done)
@@ -2257,6 +2284,7 @@ def run_gui():
                 self.b_detect_stop.setEnabled(any_run)
                 self.cb_adult.setEnabled(not any_run)
                 self.cb_url.setEnabled(not any_run)
+                self.cb_deep.setEnabled(not any_run)
             except Exception:
                 pass
             self._set_busy(any_run)
@@ -2512,8 +2540,14 @@ def run_gui():
             self.cb_adult.setChecked(True)
             self.cb_url = QCheckBox("URL 可达性")
             self.cb_url.setChecked(True)
+            self.cb_deep = QCheckBox("深度检测（拉取直连站API内容，较慢）")
+            self.cb_deep.setChecked(False)
+            self.cb_deep.setToolTip(
+                "对 type 0/1 直连站拉取 api 页面内容做关键词匹配（每站一次网络请求）。\n"
+                "关闭时直连站仅按「站点名 + ext 字段」判定，速度快但可能漏检。")
             ct.addWidget(self.cb_adult)
             ct.addWidget(self.cb_url)
+            ct.addWidget(self.cb_deep)
             ct.addStretch(1)
             detect_gv.addLayout(ct)
 
