@@ -40,6 +40,9 @@ a = Analysis(
         # 这些模块是静态 import 进 injector 的，PyInstaller 能自动分析；此处显式
         # 声明仅为稳妥（若日后改为惰性导入也不丢）。
         'csv', 'collections',
+        # 自定义代理服务器（SOCKS5 走内置握手实现 —— 刻意**不**依赖 PySocks，
+        # 两个构建环境都没有它；HTTP/HTTPS 走 CONNECT 隧道，全部用标准库）
+        'pyinj_proxy',
     ],
     hookspath=[],
     hooksconfig={},

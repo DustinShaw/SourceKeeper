@@ -57,7 +57,7 @@ print("\n== B) 直连优先、失败后镜像回退 ==")
 calls = []
 
 
-def _fake_read_ok(url, timeout=10):
+def _fake_read_ok(url, timeout=10, proxy=None):
     calls.append(url)
     return b'{"sites": []}'
 
@@ -76,7 +76,7 @@ finally:
 calls.clear()
 
 
-def _fake_read_direct_fail(url, timeout=10):
+def _fake_read_direct_fail(url, timeout=10, proxy=None):
     calls.append(url)
     if url == RAW:
         raise ValueError("HTTP 502")
@@ -95,7 +95,7 @@ finally:
     C._http_read = orig_read
 
 
-def _always_fail(url, timeout=10):
+def _always_fail(url, timeout=10, proxy=None):
     calls.append(url)
     raise ValueError("boom")
 
@@ -131,7 +131,7 @@ _MIRROR_PREFIXES = ("https://ghfast.top/", "https://ghproxy.net/", "https://gh-p
                     "https://gh.llkk.cc/", "https://cdn.jsdelivr.net/")
 
 
-def _direct_fail_mirror_ok(url, timeout=10):
+def _direct_fail_mirror_ok(url, timeout=10, proxy=None):
     calls.append(url)
     if any(url.startswith(p) for p in _MIRROR_PREFIXES):
         return b'{"ok": 1}'

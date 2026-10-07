@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "2610042023"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "2610071535"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
 APP_TITLE_SUFFIX = "%s v%s" % (APP_NAME, APP_VERSION)   # 窗体标题统一后缀（所有标题栏都标注版本）
@@ -133,6 +133,7 @@ globals().update({n: getattr(_core, n) for n in dir(_core)
 #   pyinj_jar      : jar 型 spider 源的远程 jar 健康体检
 #   pyinj_playlist : TXT ↔ M3U 直播源列表互转
 #   pyinj_report   : 汇总测速/诊断/分类/JAR 的诊断报告导出（MD/CSV）
+#   pyinj_proxy    : 自定义代理服务器（解析/验证/隧道；全链路网络请求统一出口）
 # ----------------------------------------------------------------------------
 import pyinj_sections  # noqa: F401
 import pyinj_kw        # noqa: F401
@@ -141,6 +142,7 @@ import pyinj_netdiag   # noqa: F401
 import pyinj_jar       # noqa: F401
 import pyinj_playlist  # noqa: F401
 import pyinj_report    # noqa: F401
+import pyinj_proxy     # noqa: F401
 
 
 
@@ -283,7 +285,30 @@ def run_cli(argv):
     p.add_argument("--write", action="store_true", help="真正写入配置文件；不加则只预览")
     p.add_argument("--config", metavar="NAME", default=None,
                    help="指定配置文件名（默认 py.json；未指定且 py.json 不存在时自动识别含 sites 数组的 *.json）")
+    p.add_argument("--proxy", metavar="URL", default=None,
+                   help="自定义代理服务器（如 http://127.0.0.1:7890 / socks5://127.0.0.1:7891），"
+                        "本次运行的全部网络检测与源测活都走它；不填则直连（界面里设置的代理以界面为准）")
+    p.add_argument("--check-proxy", action="store_true",
+                   help="验证 --proxy 指定的代理服务器是否正常（以能否连到 Google 首页为准）后退出")
     args = p.parse_args(argv)
+
+    # CLI 显式指定代理：界面设置以界面为准，CLI 只在传了 --proxy 时生效
+    if args.proxy:
+        _canon = pyinj_proxy.set_active(args.proxy)
+        if _canon:
+            print("代理服务器：%s" % _canon)
+        else:
+            print("⚠ 代理地址无法识别：%s（示例：http://127.0.0.1:7890）" % args.proxy)
+    elif pyinj_proxy.active_raw():
+        print("代理服务器：%s（来自界面设置）" % pyinj_proxy.active_raw())
+
+    if args.check_proxy:
+        if not args.proxy:
+            print("错误：--check-proxy 需要配合 --proxy 使用。")
+            return 2
+        r = pyinj_proxy.check_proxy(args.proxy)
+        print("\n%s %s" % ("✓" if r.get("ok") else "✗", r.get("note")))
+        return 0 if r.get("ok") else 1
 
     repo = os.path.abspath(args.repo)
     cfg_name = guess_config_file(repo, args.config)
@@ -1881,6 +1906,192 @@ def run_gui():
                            "、".join(fs["ref_skipped_encoding"][:8])))
             QMessageBox.information(self, "完成", msg)
 
+    # ------------------------------------------------------------------
+    # 自定义代理服务器（pyinj_proxy）——两处入口共用同一份设置：
+    #   · 主窗口「后台检测」面板  · 工具箱 →「网络诊断」页
+    #   · 同一个全局单例（pyinj_proxy） + 同一个 QSettings 项（net/proxy）；
+    #     任一处修改立即同步到另一处（经 pyinj_proxy.subscribe），不会两处打架。
+    #   · 「🔌 验证」在后台线程跑，判定口径由用户指定：**能否连到 Google 首页**。
+    # ------------------------------------------------------------------
+    class _ProxyVerifyWorker(QThread):
+        """后台验证代理服务器（网络 IO 不能卡界面）。结果经 done 回传 dict。"""
+
+        done = Signal(dict)
+
+        def __init__(self, parent, spec, test_url=None):
+            super().__init__(parent)
+            self.spec = spec
+            self.test_url = test_url
+
+        def run(self):
+            try:
+                r = pyinj_proxy.check_proxy(self.spec, test_url=self.test_url)
+            except Exception as ex:
+                r = {"ok": False, "label": "异常", "valid": False,
+                     "note": "验证过程出错：%s" % ex, "spec": self.spec}
+            try:
+                self.done.emit(r)
+            except Exception:
+                pass
+
+    class _ProxyControls:
+        """「代理服务器」配置行：输入框 + 验证按钮 + 状态标签（两处界面各建一份）。"""
+
+        SETTINGS_KEY = "net/proxy"
+
+        def __init__(self, parent_layout, label="🌐 代理服务器：", on_verify_note=None):
+            self.worker = None
+            self._syncing = False
+            self.on_verify_note = on_verify_note
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(QLabel(label))
+            self.edit = QLineEdit()
+            self.edit.setPlaceholderText("留空 = 直连；如 http://127.0.0.1:7890 或 socks5://127.0.0.1:7891")
+            self.edit.setClearButtonEnabled(True)
+            self.edit.setMinimumWidth(180)
+            self.edit.setToolTip(
+                "自定义代理服务器：配置后工具内**全部网络请求**都经它——\n"
+                "URL 可达性 / 网络体检 / 网络诊断 / 源测速 / JAR 体检 / 深度检测 / 源测活。\n"
+                "支持 http、https、socks5（可带 账号:密码@）；留空 = 直连。")
+            row.addWidget(self.edit, 1)
+            self.btn = QPushButton("🔌 验证")
+            self.btn.setToolTip("验证代理服务器是否正常（以能否连到 Google 首页为准）")
+            row.addWidget(self.btn)
+            self.lbl = QLabel("")
+            self.lbl.setWordWrap(True)
+            row.addWidget(self.lbl, 2)
+            parent_layout.addLayout(row)
+
+            cur = pyinj_proxy.active_raw()
+            if not cur:
+                try:
+                    cur = QSettings("PyInjector", "PyInjector").value(
+                        self.SETTINGS_KEY, "", type=str) or ""
+                except Exception:
+                    cur = ""
+                if cur:
+                    pyinj_proxy.set_active(cur)   # 让检测一开始就走它（界面未开也有生效）
+            self._syncing = True
+            try:
+                self.edit.setText(cur)
+            except Exception:
+                pass
+            self._syncing = False
+            self._apply_style(cur)
+
+            try:
+                self.edit.editingFinished.connect(self._commit)
+                self.edit.returnPressed.connect(self._commit)
+            except Exception:
+                pass
+            self.btn.clicked.connect(self.verify)
+            pyinj_proxy.subscribe(self._on_global_change)
+
+        # ---- 显示 ----
+        def _apply_style(self, raw):
+            s = str(raw or "").strip()
+            try:
+                if not s:
+                    extra = ""
+                    _env = pyinj_proxy.env_proxy_raw()
+                    if _env:
+                        extra = "（检测到系统环境变量代理 %s，本工具不自动跟随）" % _env
+                    self.lbl.setText("未配置代理 · 直连" + extra)
+                    self.lbl.setStyleSheet("color:#8a94a0;")
+                    return
+                p = pyinj_proxy.parse_proxy(s)
+                if p:
+                    self.lbl.setText("已启用：" + pyinj_proxy.display_proxy(p))
+                    self.lbl.setStyleSheet("color:#1e7e34; font-weight:bold;")
+                else:
+                    self.lbl.setText("⚠ " + (pyinj_proxy.parse_error_hint(s) or "地址无效"))
+                    self.lbl.setStyleSheet("color:#c0392b; font-weight:bold;")
+            except Exception:
+                pass
+
+        def _commit(self):
+            """输入框失焦/回车：落到全局单例并持久化（无效 = 直连，但保留用户输入以便改正）。"""
+            if self._syncing:
+                return
+            raw = self.edit.text().strip()
+            try:
+                pyinj_proxy.set_active(raw)
+                QSettings("PyInjector", "PyInjector").setValue(self.SETTINGS_KEY, raw)
+            except Exception:
+                pass
+            self._apply_style(raw)
+
+        def _on_global_change(self, canonical):
+            """另一处界面改了代理 → 同步过来，避免两处显示/生效不一致。"""
+            if self._syncing:
+                return
+            try:
+                self._syncing = True
+                self.edit.setText(canonical)
+                self._syncing = False
+            except Exception:
+                self._syncing = False
+            self._apply_style(canonical)
+
+        # ---- 验证 ----
+        def verify(self):
+            raw = self.edit.text().strip()
+            if raw and not pyinj_proxy.parse_proxy(raw):
+                self.lbl.setText("⚠ " + (pyinj_proxy.parse_error_hint(raw) or "地址无效"))
+                self.lbl.setStyleSheet("color:#c0392b; font-weight:bold;")
+                return
+            self._commit()
+            try:
+                self.btn.setEnabled(False)
+            except Exception:
+                pass
+            self.lbl.setText("⏳ 验证中…正在经代理连接 Google 首页")
+            self.lbl.setStyleSheet("color:#8a94a0;")
+            try:
+                w = _ProxyVerifyWorker(self.edit, raw)
+                self.worker = w
+                w.done.connect(self._on_verified)
+                w.finished.connect(w.deleteLater)
+                w.start()
+            except Exception as ex:
+                self._on_verified({"ok": False, "note": "无法启动验证：%s" % ex})
+
+        def _on_verified(self, r):
+            r = r or {}
+            ok = bool(r.get("ok"))
+            try:
+                self.btn.setEnabled(True)
+                self.worker = None
+            except Exception:
+                pass
+            note = str(r.get("note") or r.get("label") or "")
+            try:
+                self.lbl.setText(("✓ " if ok else "✗ ") + note)
+                self.lbl.setStyleSheet(
+                    "color:#1e7e34; font-weight:bold;" if ok
+                    else "color:#c0392b; font-weight:bold;")
+            except Exception:
+                pass
+            try:
+                if callable(self.on_verify_note):
+                    self.on_verify_note(ok, note)
+            except Exception:
+                pass
+
+        def teardown(self):
+            try:
+                pyinj_proxy.unsubscribe(self._on_global_change)
+            except Exception:
+                pass
+            w = self.worker
+            self.worker = None
+            try:
+                if w is not None:
+                    w.done.disconnect()
+            except Exception:
+                pass
+
     class ConfigDialog(QDialog):
         """查看/编辑/删除已注册站点的对话框，保存时手术式写回并备份。"""
 
@@ -2520,6 +2731,10 @@ def run_gui():
             仅当用户**手动拖过非 name 列**时才保存 cfg/colwidth/* 并置 cfg/cols_user_resized，
             否则这些键保持清空 → 下次仍走「按内容自适应」，不会被偏宽的旧值污染。"""
             try:
+                self.proxy_ctl.teardown()      # 退订代理变更通知，避免对话框关闭后仍被回调
+            except Exception:
+                pass
+            try:
                 st = QSettings("PyInjector", "PyInjector")
                 st.setValue("cfg/geometry", self.saveGeometry())
                 if getattr(self, "_cols_user_resized", False):
@@ -2636,6 +2851,9 @@ def run_gui():
             ctrl.addWidget(self.b_detect_stop)
             ctrl.addStretch(1)
             detect_gv.addLayout(ctrl)
+            # 自定义代理服务器：联网检测（URL 可达性 / 网络体检 / 源测速 / 源测活…）统一出口。
+            # 与「工具箱 → 网络诊断」页共用同一份设置（改动互相同步）。
+            self.proxy_ctl = _ProxyControls(detect_gv)
             root.addWidget(detect_grp)
 
             # 搜索行：现代风——无标签、框内搜索占位符 + 内置清空 ×，回车跳下一个匹配
@@ -5229,16 +5447,24 @@ def run_gui():
                 return
             lvl, verdict = source_verdict(res)
             names = res.get("classes") or []
+            note = str(res.get("note") or "")
             self.lbl_prev.setText("“%s” 在影视仓里的分类栏（%s）" % (name, verdict))
             if not names:
-                self.preview.setText(res.get("error") or
-                                     "分类为空：影视仓里不会显示分类栏，判为死源。")
+                txt = res.get("error") or "分类为空：影视仓里不会显示分类栏，判为死源。"
+                if note:
+                    txt += "\n" + note
+                self.preview.setText(txt)
                 return
             html = self._tab_html(names)
             titles = res.get("titles") or []
             if titles:
                 html += ('<div style="margin-top:8px;">首页样例：'
                          + _probe_esc(" · ".join(titles)) + "</div>")
+            if note:
+                # 结果备注（如「仅做 HTTP 可达性判定」、SOCKS5 代理缺 PySocks 的提示）
+                # 之前被丢弃，导致判定依据看不见——这里如实展示
+                html += ('<div style="margin-top:8px; color:#b26a00;">⚠ %s</div>'
+                         % _probe_esc(note))
             self.preview.setText(html)
 
         # ---- 行操作：查看 / 修改 / 删除 对应的配置条目与 .py 源文件 ----
@@ -5539,6 +5765,10 @@ def run_gui():
             self._closed = True
             if self._worker is not None:
                 self._worker.stop()
+            try:
+                self.proxy_ctl.teardown()      # 退订代理变更通知
+            except Exception:
+                pass
             try:
                 super().closeEvent(event)
             except Exception:
@@ -5998,6 +6228,9 @@ def run_gui():
             self._tool_buttons.append(b)
             h.addWidget(b)
             v.addLayout(h)
+            # 自定义代理服务器：与主窗口「后台检测」面板共用同一份设置（改动互相同步）
+            self.proxy_ctl = _ProxyControls(
+                v, on_verify_note=lambda ok, note: self._status(note))
             self._mk_progress(v, "net")
             self.t_net = self._mk_table(
                 ["站点", "结论", "需代理", "域名", "IP", "耗时ms", "备注"], v)
@@ -6029,8 +6262,10 @@ def run_gui():
             def done(rows):
                 self._fill_table(self.t_net, rows)
                 px = sum(1 for r in rows if r[2] == "是")
+                via = "经代理" if pyinj_proxy.get_active() else "直连"
                 self._progress_done(
-                    "net", "网络诊断完成：共 %d 个源，疑似需特殊上网 %d 个。" % (len(rows), px))
+                    "net", "网络诊断完成（%s）：共 %d 个源，疑似需特殊上网 %d 个。"
+                           % (via, len(rows), px))
 
             self._run_tool("net", targets, job, None, done, fmt="0 / %d")
 

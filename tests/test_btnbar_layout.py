@@ -105,6 +105,17 @@ try:
                            "💾 保存并写入")) == 7,
        str([b.text() for b in dlg._busy_buttons]))
 
+    print("\n== 5) 自定义代理服务器控件（联网检测统一出口）==")
+    ok("检测面板内置代理控件行", hasattr(dlg, "proxy_ctl"),
+       str(getattr(dlg, "proxy_ctl", None)))
+    ok("代理输入框 + 验证按钮齐备",
+       hasattr(dlg.proxy_ctl, "edit") and "验证" in dlg.proxy_ctl.btn.text(),
+       dlg.proxy_ctl.btn.text())
+    ok("默认留空 = 直连提示", "直连" in dlg.proxy_ctl.lbl.text(),
+       dlg.proxy_ctl.lbl.text())
+    ok("新增一行后对话框最小宽度仍 < 760",
+       dlg.minimumSizeHint().width() < 760, "mw=%d" % dlg.minimumSizeHint().width())
+
     dlg.close()
 finally:
     shutil.rmtree(tmp, ignore_errors=True)

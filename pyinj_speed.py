@@ -21,6 +21,7 @@ import urllib.error
 from pyinj_core import (
     extract_urls_from_py, resolve_spider_path, source_type_of, _HTTP_UA,
 )
+import pyinj_proxy as _proxy_mod
 
 # ---- 超时预算（秒）----
 TCP_TIMEOUT = 2.5
@@ -39,8 +40,13 @@ def _parse_host_port(url):
     return host, port
 
 
-def measure_tcp_latency(url, timeout=TCP_TIMEOUT):
-    """TCP 连接一次并返回耗时（毫秒）。失败返回 None。"""
+def measure_tcp_latency(url, timeout=TCP_TIMEOUT, proxy=None):
+    """TCP 连接一次并返回耗时（毫秒）。失败返回 None。
+
+    ⚠️ 纯直连指标：配置了自定义代理时**直接返回 None**（TCP 绕不过 HTTP 代理，
+    测出来的直连延迟与「经代理的真实体验」无关，留着会给出误导性数值）。"""
+    if _proxy_mod.resolve(proxy):
+        return None
     host, port = _parse_host_port(url)
     if not host:
         return None
@@ -52,9 +58,21 @@ def measure_tcp_latency(url, timeout=TCP_TIMEOUT):
         return None
 
 
-def measure_http_latency(url, timeout=HTTP_TIMEOUT, read_bytes=READ_BYTES):
+def measure_http_latency(url, timeout=HTTP_TIMEOUT, read_bytes=READ_BYTES, proxy=None):
     """HTTP GET 到「第一个响应字节」的耗时（毫秒）+ 状态码 + 实际读数。
-    返回 (latency_ms 或 None, status 或 None, nbytes, err)。"""
+    返回 (latency_ms 或 None, status 或 None, nbytes, err)。
+    配置了自定义代理时经代理请求（http/https/socks5 均可）。"""
+    px = _proxy_mod.resolve(proxy)
+    if px:
+        r = _proxy_mod.request_via(
+            px, url, "GET", timeout=timeout, max_bytes=read_bytes,
+            headers={"Range": "bytes=0-%d" % (read_bytes - 1)})
+        ms = r.get("latency_ms")
+        status = r.get("status")
+        n = len(r.get("body") or b"")
+        if r.get("ok"):
+            return ms, status, n, ""
+        return None, status, n, (r.get("err") or ("http:%s" % status))
     req = urllib.request.Request(
         url, method="GET",
         headers={"User-Agent": _HTTP_UA, "Accept": "*/*",
@@ -92,7 +110,7 @@ def _weighted_mean(samples):
 
 
 def speed_test_url(url, samples=SAMPLES_DEFAULT, read_bytes=READ_BYTES,
-                   tcp_timeout=TCP_TIMEOUT, http_timeout=HTTP_TIMEOUT):
+                   tcp_timeout=TCP_TIMEOUT, http_timeout=HTTP_TIMEOUT, proxy=None):
     """对单个 URL 做「延迟采样 + 前 N 字节真实下载」测速。
     返回 dict：
         url, reachable(bool), latency_ms(int|None), status, bytes,
@@ -100,20 +118,23 @@ def speed_test_url(url, samples=SAMPLES_DEFAULT, read_bytes=READ_BYTES,
     判定口径（防误杀）：
         · 任一次 HTTP 成功读到响应（2xx/3xx）→ reachable=True；
         · 否则任一 TCP 成功 → reachable=True（但 quality 记「中」，提示仅有端口）；
-        · 全失败 → reachable=False。"""
+        · 全失败 → reachable=False。
+    配置了自定义代理时只走 HTTP（经代理），不再做 TCP 直连兜底。"""
     res = {"url": url, "reachable": False, "latency_ms": None, "status": None,
            "bytes": 0, "ok_count": 0, "samples": samples, "method": "",
            "err": "", "quality": "不可达"}
+    px = _proxy_mod.resolve(proxy)
     http_samples, tcp_samples = [], []
     last_status, last_bytes, last_err = None, 0, ""
     for _ in range(max(1, samples)):
-        ms, status, nbytes, err = measure_http_latency(url, http_timeout, read_bytes)
+        ms, status, nbytes, err = measure_http_latency(url, http_timeout, read_bytes,
+                                                      proxy=proxy)
         last_status, last_bytes, last_err = status, nbytes, err
         if ms is not None:
             http_samples.append(ms)
             res["ok_count"] += 1
-        else:
-            tcp_samples.append(measure_tcp_latency(url, tcp_timeout))
+        elif not px:
+            tcp_samples.append(measure_tcp_latency(url, tcp_timeout, proxy=proxy))
 
     res["status"] = last_status
     res["bytes"] = last_bytes
@@ -147,7 +168,8 @@ def _quality_from_latency(ms, nbytes):
     return "差"
 
 
-def speed_test_source(entry, base_dir=None, max_urls=2, samples=SAMPLES_DEFAULT):
+def speed_test_source(entry, base_dir=None, max_urls=2, samples=SAMPLES_DEFAULT,
+                      proxy=None):
     """对一个站点条目测速：从其 .py（Spider）或 api（直连）取出 URL 逐个测。
     返回 dict：{urls:[url...], results:[{...}], best:{...}|None,
                reachable(bool|None), note}。"""
@@ -167,7 +189,7 @@ def speed_test_source(entry, base_dir=None, max_urls=2, samples=SAMPLES_DEFAULT)
     if not urls:
         return {"urls": [], "results": [], "best": None, "reachable": None,
                 "note": "未从源中提取到可测 URL"}
-    results = [speed_test_url(u, samples=samples) for u in urls]
+    results = [speed_test_url(u, samples=samples, proxy=proxy) for u in urls]
     ok = [r for r in results if r["reachable"]]
     best = None
     if ok:

@@ -53,8 +53,8 @@
 
 | 文件 | 适用系统 |
 | --- | --- |
-| `源管家 v2610042023.exe` | Windows 10+（Qt6） |
-| `源管家 v2610042023-Win7.exe` | Windows 7（Qt5） |
+| `源管家 v2610071535.exe` | Windows 10+（Qt6） |
+| `源管家 v2610071535-Win7.exe` | Windows 7（Qt5） |
 
 ## 🚀 快速开始
 
@@ -76,12 +76,12 @@ python injector.py --help
 | --- | --- |
 | `injector.py` | 主程序入口（GUI + CLI），顶部集中定义版本号与样式 |
 | `pyinj_core.py` | 纯逻辑层（JSONC 解析 / 扫描 / 站点改写 / 备份 / 源探测），零 Qt 依赖、可单测 |
-| `pyinj_sections.py` 等 | 各功能子模块（lives/parses、词库、测速、网络诊断、JAR 体检、直播表、诊断报告、ads 合并） |
+| `pyinj_sections.py` 等 | 各功能子模块（lives/parses、词库、测速、网络诊断、JAR 体检、直播表、诊断报告、自定义代理、ads 合并） |
 | `data/` | 外置词库（敏感词分类库 / 需特殊上网域名库），分类识别与网络诊断功能依赖 |
 | `PyInjector.spec` / `PyInjector-win7.spec` | PyInstaller 打包配置（手工维护，标准版 / Win7 版） |
 | `build.py` / `build_win7.py` | 一键构建脚本（标准版 / Win7 版），含版本核对与全量测试 |
 | `deploy*.py` | 部署与冒烟校验脚本 |
-| `tests/` | 单元测试与 GUI 冒烟测试（PySide6 + PySide2 双链），约 50 个用例 |
+| `tests/` | 单元测试与 GUI 冒烟测试（PySide6 + PySide2 双链），约 57 个用例 |
 
 说明：`py/`（影视源脚本）、`py.json`（个人配置）、`*.exe`、`dist/`、`build/``.workbuddy/` 等不纳入本仓库（见 `.gitignore`），以保持仓库为纯工具源码。
 

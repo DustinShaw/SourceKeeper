@@ -24,6 +24,7 @@ import urllib.request
 import urllib.error
 
 from pyinj_core import source_type_of, _HTTP_UA
+import pyinj_proxy as _proxy_mod
 
 # ---- 体检预算 ----
 JAR_TIMEOUT = 8.0
@@ -85,9 +86,24 @@ def iter_jar_entries(sites):
     return out
 
 
-def _open_head(url, timeout=JAR_TIMEOUT, read_bytes=JAR_PROBE_BYTES):
+def _open_head(url, timeout=JAR_TIMEOUT, read_bytes=JAR_PROBE_BYTES, proxy=None):
     """打开 URL 读前 N 字节 + 尽量取 Content-Length。
-    返回 (status, nbytes, content_length, content_type, err)。"""
+    返回 (status, nbytes, content_length, content_type, err)。
+    配置了自定义代理时经代理请求。"""
+    px = _proxy_mod.resolve(proxy)
+    if px:
+        r = _proxy_mod.request_via(
+            px, url, "GET", timeout=timeout, max_bytes=read_bytes,
+            headers={"Range": "bytes=0-%d" % (read_bytes - 1)})
+        if r.get("status") is None:
+            return None, 0, -1, "", (r.get("err") or "无响应")[:100]
+        clen = -1
+        try:
+            clen = int(r["headers"].get("content-length") or -1)
+        except Exception:
+            clen = -1
+        return (r["status"], len(r.get("body") or b""), clen,
+                (r["headers"].get("content-type") or "").lower(), "")
     req = urllib.request.Request(
         url, method="GET",
         headers={"User-Agent": _HTTP_UA, "Accept": "*/*",
@@ -116,15 +132,41 @@ def _open_head(url, timeout=JAR_TIMEOUT, read_bytes=JAR_PROBE_BYTES):
         return None, 0, -1, "", str(ex)[:100]
 
 
-def compute_md5(url, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES):
+def compute_md5(url, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES, proxy=None):
     """下载整包（流式，边读边算 MD5），返回 {'md5','bytes','status','note'}。
 
     · 超过 max_bytes 视为过大，不整包下载（note 说明），md5 为空；
     · 服务器报的 Content-Length 已知超限时直接跳过，避免白下；
-    · 任何异常都转成 note，绝不抛出（供 GUI 安全调用）。"""
+    · 任何异常都转成 note，绝不抛出（供 GUI 安全调用）。
+    · 配置了自定义代理时经代理下载；若响应超过代理模块的硬上限被**截断**，
+      一律判为「过大」跳过 MD5（半截数据算出的 MD5 是错的，宁可不算）。
+    """
     out = {"md5": "", "bytes": 0, "status": None, "note": ""}
     if not url:
         out["note"] = "无 URL"
+        return out
+    px = _proxy_mod.resolve(proxy)
+    if px:
+        r = _proxy_mod.request_via(px, url, "GET", timeout=timeout, read_all=True)
+        out["status"] = r.get("status")
+        body = r.get("body") or b""
+        out["bytes"] = len(body)
+        if r.get("status") is None:
+            out["note"] = "下载失败：%s" % (r.get("err") or "无响应")
+            return out
+        if not r.get("ok"):
+            out["note"] = "HTTP %s" % r.get("status")
+            return out
+        clen = -1
+        try:
+            clen = int(r["headers"].get("content-length") or -1)
+        except Exception:
+            clen = -1
+        if r.get("truncated") or clen > max_bytes:
+            out["note"] = ("jar 过大（%s 字节 > 上限 %d），已跳过 MD5"
+                           % (clen if clen > 0 else ">硬上限", max_bytes))
+            return out
+        out["md5"] = hashlib.md5(body).hexdigest()
         return out
     req = urllib.request.Request(
         url, method="GET",
@@ -163,7 +205,8 @@ def compute_md5(url, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES):
     return out
 
 
-def verify_md5(url, expect_md5, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES):
+def verify_md5(url, expect_md5, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES,
+               proxy=None):
     """下载 jar 计算 MD5 并与 expect_md5 比对。
     返回 {'level': ok/mismatch/skip, 'label', 'md5', 'expect', 'bytes', 'note'}"""
     expect = str(expect_md5 or "").strip().lower()
@@ -172,7 +215,7 @@ def verify_md5(url, expect_md5, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES
     if not expect:
         res["note"] = "未提供期望 MD5"
         return res
-    got = compute_md5(url, timeout=timeout, max_bytes=max_bytes)
+    got = compute_md5(url, timeout=timeout, max_bytes=max_bytes, proxy=proxy)
     res["md5"] = got["md5"]
     res["bytes"] = got["bytes"]
     if not got["md5"]:
@@ -190,7 +233,7 @@ def verify_md5(url, expect_md5, timeout=JAR_TIMEOUT, max_bytes=JAR_MD5_MAX_BYTES
 
 
 def check_jar_url(url, timeout=JAR_TIMEOUT, min_bytes=JAR_MIN_BYTES,
-                  read_bytes=JAR_PROBE_BYTES, expect_md5=None):
+                  read_bytes=JAR_PROBE_BYTES, expect_md5=None, proxy=None):
     """对单个 jar URL 做体检。
     返回 dict：{url, level, label, ok(bool), status, bytes, content_length,
                content_type, note, md5_info}
@@ -209,7 +252,7 @@ def check_jar_url(url, timeout=JAR_TIMEOUT, min_bytes=JAR_MIN_BYTES,
         res["label"] = JAR_LABELS[JAR_NO_URL]
         res["note"] = "条目中没有 jar URL"
         return res
-    status, nbytes, clen, ctype, err = _open_head(url, timeout, read_bytes)
+    status, nbytes, clen, ctype, err = _open_head(url, timeout, read_bytes, proxy=proxy)
     res["status"] = status
     res["bytes"] = nbytes
     res["content_length"] = clen
@@ -239,18 +282,18 @@ def check_jar_url(url, timeout=JAR_TIMEOUT, min_bytes=JAR_MIN_BYTES,
         res["note"] = "内容仅 %d 字节，疑似错误页/占位（< %d）" % (size, min_bytes)
     # 可选：MD5 校验（仅在提供了期望值时才下载整包）
     if expect_md5:
-        res["md5_info"] = verify_md5(url, expect_md5, timeout=timeout)
+        res["md5_info"] = verify_md5(url, expect_md5, timeout=timeout, proxy=proxy)
         if res["md5_info"]["level"] == MD5_MISMATCH:
             res["ok"] = False
             res["note"] += "；MD5 不一致"
     return res
 
 
-def check_jar_source(entry, timeout=JAR_TIMEOUT, expect_md5=None):
+def check_jar_source(entry, timeout=JAR_TIMEOUT, expect_md5=None, proxy=None):
     """条目级 jar 体检。返回 check_jar_url 的结果，并补上 name/key/type。
     非 jar 型条目返回 level=no_url。expect_md5 提供时额外做 MD5 校验。"""
     url = jar_url_of(entry or {})
-    res = check_jar_url(url, timeout=timeout, expect_md5=expect_md5)
+    res = check_jar_url(url, timeout=timeout, expect_md5=expect_md5, proxy=proxy)
     res["name"] = str((entry or {}).get("name") or "")
     res["key"] = str((entry or {}).get("key") or "")
     res["type"] = source_type_of(entry or {})
@@ -258,7 +301,7 @@ def check_jar_source(entry, timeout=JAR_TIMEOUT, expect_md5=None):
 
 
 def check_jar_sites(sites, timeout=JAR_TIMEOUT, progress_cb=None,
-                    stop_check=None):
+                    stop_check=None, proxy=None):
     """批量体检 sites 里的所有 jar 型条目。
     返回 {results:[...], total, ok, small, bad}（bad = http/unreachable）。
     progress_cb(done, total, name) 可选；stop_check() 返回 True 时提前中止。"""
@@ -268,7 +311,7 @@ def check_jar_sites(sites, timeout=JAR_TIMEOUT, progress_cb=None,
     for i, (e, _u) in enumerate(pairs):
         if stop_check and stop_check():
             break
-        r = check_jar_source(e, timeout=timeout)
+        r = check_jar_source(e, timeout=timeout, proxy=proxy)
         results.append(r)
         if progress_cb:
             try:

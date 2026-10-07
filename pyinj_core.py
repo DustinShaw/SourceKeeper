@@ -20,6 +20,8 @@ import subprocess
 import tempfile
 from datetime import datetime
 
+import pyinj_proxy as _proxy_mod   # 自定义代理服务器（全部网络请求统一出口）
+
 CONFIG_NAME = "py.json"
 
 LEVEL_TAG = {"info": "· ", "ok": "✓ ", "warn": "⚠ ", "err": "✗ "}
@@ -1112,22 +1114,30 @@ _DEEP_UA = ("Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
 
 
-def deep_fetch_text(url, timeout=8, max_bytes=262144):
+def deep_fetch_text(url, timeout=8, max_bytes=262144, proxy=None):
     """深度检测：拉取直连站 api 页面内容供关键词匹配。
     短超时 + 限长（默认 256KB）+ 任何异常返回空串——检测永远不因网络问题卡死/报错。
-    绕过系统/环境代理直连（与网络体检「直连优先」口径一致；采集站接口均为国内直连，
-    本机代理对 localhost/国内接口反而会造成 502 之类假失败）。
+    代理口径：**配置了自定义代理就走代理**；未配置时显式直连（与网络体检「直连优先」
+    口径一致 —— 采集站接口多为国内直连，本机系统代理反而会造成 502 之类假失败）。
     调用方负责并发/频度（当前为 worker 内串行调用）。"""
     u = str(url or "").strip()
     if not u.lower().startswith(("http://", "https://")):
         return ""
+    px = _proxy_mod.resolve(proxy)
     try:
-        req = urllib.request.Request(
-            u, headers={"User-Agent": _DEEP_UA, "Accept": "*/*"})
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({}))  # 显式空代理 = 直连
-        with opener.open(req, timeout=timeout) as resp:
-            data = resp.read(max_bytes)
+        if px:
+            r = _proxy_mod.request_via(px, u, "GET", timeout=timeout,
+                                       max_bytes=max_bytes)
+            if not r.get("body"):
+                return ""
+            data = r["body"]
+        else:
+            req = urllib.request.Request(
+                u, headers={"User-Agent": _DEEP_UA, "Accept": "*/*"})
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}))  # 显式空代理 = 直连
+            with opener.open(req, timeout=timeout) as resp:
+                data = resp.read(max_bytes)
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
@@ -1321,9 +1331,15 @@ def extract_urls_from_py(py_path):
     return urls
 
 
-def _method_tcp_connect(url, timeout=2.5):
+def _method_tcp_connect(url, timeout=2.5, proxy=None):
     """方法一：TCP 连接到 URL 主机:端口（默认 80/443）。
-    主机在线即视为可达，最快。返回 (是否可达, 方法描述)。"""
+    主机在线即视为可达，最快。返回 (是否可达, 方法描述)。
+
+    ⚠️ 这是**直连**探测：无法穿过代理（HTTP 代理不支持任意 TCP；SOCKS5 虽可隧道，
+    但那测的是代理到目标的连通性，会绕过用户"走代理"的意图）。因此**只要配置了
+    自定义代理，本方法就不再参与**，改由 _method_http_get 经代理判定。"""
+    if _proxy_mod.resolve(proxy):
+        return False, ""
     from urllib.parse import urlparse
     p = urlparse(url)
     host = p.hostname
@@ -1337,11 +1353,21 @@ def _method_tcp_connect(url, timeout=2.5):
         return False, ""
 
 
-def _method_http_get(url, timeout=4.0):
+def _method_http_get(url, timeout=4.0, proxy=None):
     """方法二：HTTP GET 请求（关闭证书校验，容忍自签/过期证书）。
     仅 2xx/3xx 视为可达；4xx/5xx（含代理返回的 502/504）视为不可达——
     避免代理拦截把死站误判为可达。TCP 连接（方法一）才是主机在线的权威信号。
+    配置了自定义代理时**经代理请求**（同一套 2xx/3xx 口径不变）。
     返回 (是否可达, 方法描述)。"""
+    px = _proxy_mod.resolve(proxy)
+    if px:
+        try:
+            r = _proxy_mod.request_via(px, url, "GET", timeout=timeout, max_bytes=1024)
+        except Exception:
+            return False, ""
+        if r.get("ok"):
+            return True, "proxy:http:%s" % r.get("status")
+        return False, ("proxy:http:%s" % r.get("status")) if r.get("status") else ""
     req = urllib.request.Request(
         url, method="GET",
         headers={"User-Agent": _HTTP_UA, "Accept": "*/*"})
@@ -1362,15 +1388,21 @@ def _method_http_get(url, timeout=4.0):
         return False, ""
 
 
-def check_url_reachable(url, tcp_timeout=2.5, http_timeout=4.0):
+def check_url_reachable(url, tcp_timeout=2.5, http_timeout=4.0, proxy=None):
     """多种方法检测单个 URL 是否可达：TCP 连接 + HTTP GET，任一成功即有效。
-    返回 (可达:bool, 方法:str, 错误:str)。"""
-    methods = [_method_tcp_connect, _method_http_get]
+    返回 (可达:bool, 方法:str, 错误:str)。
+
+    配置了自定义代理时**只用经代理的 HTTP**（TCP 直连会绕过代理，把「只有走代理
+    才通」的站点误判成不可达，或把已被代理拦截的站点误判成可达）。"""
+    px = _proxy_mod.resolve(proxy)
+    if px:
+        methods = [(_method_http_get, http_timeout)]
+    else:
+        methods = [(_method_tcp_connect, tcp_timeout), (_method_http_get, http_timeout)]
     last_err = ""
-    for fn in methods:
-        to = tcp_timeout if fn is _method_tcp_connect else http_timeout
+    for fn, to in methods:
         try:
-            ok, info = fn(url, to)
+            ok, info = fn(url, to, proxy=proxy)
         except Exception as ex:
             ok, info = False, str(ex)[:80]
         if ok:
@@ -1380,7 +1412,7 @@ def check_url_reachable(url, tcp_timeout=2.5, http_timeout=4.0):
     return False, "", last_err
 
 
-def check_site_urls(py_path, max_urls=2):
+def check_site_urls(py_path, max_urls=2, proxy=None):
     """检测某个站点对应 .py 中提取的所有 URL 的可达性。
     任一 URL 可达即判为有效。返回 dict：
         reachable: True / False / None（None=未从 .py 提取到 URL）
@@ -1391,14 +1423,14 @@ def check_site_urls(py_path, max_urls=2):
                 "note": "未从 .py 中提取到 URL", "urls": []}
     tested = urls[:max_urls]
     for u in tested:
-        ok, method, err = check_url_reachable(u)
+        ok, method, err = check_url_reachable(u, proxy=proxy)
         if ok:
             return {"reachable": True, "method": method, "url": u, "note": "", "urls": urls}
     return {"reachable": False, "method": "", "url": tested[0],
             "note": "前 %d 个 URL 的 TCP/HTTP 均不可达" % len(tested), "urls": urls}
 
 
-def check_source_reachability(entry, base_dir=None, max_urls=2):
+def check_source_reachability(entry, base_dir=None, max_urls=2, proxy=None):
     """按 type 检测站点可达性（统一入口，替代直接调 check_site_urls 的 .py 写死）：
       - type:1（直连 CMS）：直接探 api（HTTP 可达即有效）
       - type:3 且本地有 .py：复用 check_site_urls 从 .py 文本抽取 URL 检测
@@ -1410,15 +1442,15 @@ def check_source_reachability(entry, base_dir=None, max_urls=2):
                  or api.endswith((".py", ".js", ".jar", ".drpy"))
                  or t == 3)
     if t == 1 and api.startswith("http"):
-        ok, method, _ = check_url_reachable(api)
+        ok, method, _ = check_url_reachable(api, proxy=proxy)
         return {"reachable": ok, "urls": [api] if ok else [],
                 "note": "直连 CMS 接口可达性", "method": method}
     if is_spider and base_dir:
         py_path = resolve_spider_path(base_dir, api)
         if py_path and os.path.isfile(py_path):
-            return check_site_urls(py_path, max_urls=max_urls)
+            return check_site_urls(py_path, max_urls=max_urls, proxy=proxy)
     if api.startswith("http"):
-        ok, method, _ = check_url_reachable(api)
+        ok, method, _ = check_url_reachable(api, proxy=proxy)
         return {"reachable": ok, "urls": [api] if ok else [],
                 "note": "HTTP 接口可达性", "method": method}
     return {"reachable": None, "urls": [], "note": "无 URL 可检测", "method": ""}
@@ -2003,8 +2035,20 @@ def _mirror_urls(url):
     return out
 
 
-def _http_read(url, timeout=10):
-    """单次 HTTP GET，返回 bytes；失败抛 ValueError（含 HTTP 非 2xx / 空内容）。"""
+def _http_read(url, timeout=10, proxy=None):
+    """单次 HTTP GET，返回 bytes；失败抛 ValueError（含 HTTP 非 2xx / 空内容）。
+    配置了自定义代理时经代理取回。"""
+    px = _proxy_mod.resolve(proxy)
+    if px:
+        try:
+            r = _proxy_mod.request_via(px, url, "GET", timeout=timeout, read_all=True)
+        except Exception as ex:
+            raise ValueError(str(ex))
+        if r.get("status") is not None and not r.get("ok"):
+            raise ValueError("HTTP %s" % r.get("status"))
+        if not r.get("body"):
+            raise ValueError(r.get("err") or "空内容")
+        return r["body"]
     req = urllib.request.Request(url, headers={"User-Agent": _HTTP_UA})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -2015,17 +2059,18 @@ def _http_read(url, timeout=10):
         raise ValueError(str(ex))
 
 
-def _fetch_url_bytes(url, timeout=10, info=None, allow_mirror=None):
+def _fetch_url_bytes(url, timeout=10, info=None, allow_mirror=None, proxy=None):
     """直连优先、失败后镜像回退地取回 bytes。
 
     info：可选 dict，原地写入 {"mirror": 实际使用的镜像 URL 或 None, "error": 直连错误}
     allow_mirror：None=按主机自动判定；False=禁用镜像。
+    代理：未显式传时取当前自定义代理（配置了就全程走代理，含镜像回退）。
     """
     if info is not None:
         info.setdefault("mirror", None)
     direct_err = ""
     try:
-        return _http_read(url, timeout)
+        return _http_read(url, timeout, proxy=proxy)
     except Exception as ex:
         direct_err = str(ex)
     if info is not None:
@@ -2036,7 +2081,7 @@ def _fetch_url_bytes(url, timeout=10, info=None, allow_mirror=None):
     if MIRROR_FALLBACK and allow_mirror:
         for mu in _mirror_urls(url):
             try:
-                data = _http_read(mu, timeout)
+                data = _http_read(mu, timeout, proxy=proxy)
                 if data:
                     if info is not None:
                         info["mirror"] = mu
@@ -2046,11 +2091,12 @@ def _fetch_url_bytes(url, timeout=10, info=None, allow_mirror=None):
     raise ValueError(direct_err or ("下载失败：%s" % url))
 
 
-def fetch_text_from_url(url, timeout=10, info=None, allow_mirror=None):
+def fetch_text_from_url(url, timeout=10, info=None, allow_mirror=None, proxy=None):
     """抓取远程配置文本（raw JSON / JSONC 均可）。失败抛 ValueError（含 HTTP 非 2xx）。
     直连失败时自动尝试镜像（ghproxy / jsDelivr 等），并在 info["mirror"] 里如实上报。"""
     try:
-        raw = _fetch_url_bytes(url, timeout, info=info, allow_mirror=allow_mirror)
+        raw = _fetch_url_bytes(url, timeout, info=info, allow_mirror=allow_mirror,
+                               proxy=proxy)
     except Exception as ex:
         raise ValueError("下载失败：%s（%s）" % (url, ex))
     body = raw.decode("utf-8", "ignore")
@@ -3401,15 +3447,27 @@ def _emit(text):
 
 def _install_net_defaults(budget=30):
     """网络默认行为：
-    1) 默认**不走系统代理** —— 影视仓/TVBox 运行在电视/手机上，不读 Windows 的
-       代理环境变量，走代理会与之行为不一致（且代理隧道常卡在 TLS 握手）。
+    1) 代理策略（按优先级）：
+       ① PYINJ_PROBE_PROXY_SPEC 有值（用户配了自定义代理）→ **走它**（worker 自身与
+          子进程内 py 源都走；env 里的 HTTP_PROXY 等已由父进程注入好）；
+       ② PYINJ_PROBE_PROXY 为真 → 跟随系统代理环境变量；
+       ③ 都没有 → 默认**不走系统代理** —— 影视仓/TVBox 运行在电视/手机上，不读
+          Windows 的代理环境变量，走代理会与之行为不一致（且代理隧道常卡在 TLS 握手）。
     2) 给所有 socket 兜底超时 —— 源不带 timeout 时不会无限等待。"""
     global NET_SOCK_TIMEOUT
     try:
         NET_SOCK_TIMEOUT = max(5, min(12, int(budget) - 2))
     except Exception:
         pass
-    if PROXY_RAW.strip() not in ("1", "true", "yes", "on"):
+    spec = os.environ.get("PYINJ_PROBE_PROXY_SPEC", "").strip()
+    want_proxy = PROXY_RAW.strip() in ("1", "true", "yes", "on")
+    if spec:
+        try:
+            urllib.request.install_opener(urllib.request.build_opener(
+                urllib.request.ProxyHandler({"http": spec, "https": spec})))
+        except Exception:
+            pass
+    elif not want_proxy:
         for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
                   "http_proxy", "https_proxy", "all_proxy"):
             os.environ.pop(k, None)
@@ -3787,7 +3845,8 @@ def _extract_classes(obj):
     return uniq
 
 
-def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=False):
+def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=False,
+                     proxy=None):
     """直连 CMS（type:1）测活：HTTP 取分类列表判活。
 
     影视仓顶部那一排分类标签 = 源 homeContent（苹果CMS 即 `ac=list` /
@@ -3809,10 +3868,14 @@ def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=Fals
     headers = {"User-Agent": ua or PROBE_UA,
                "Accept": "application/json, */*",
                "Connection": "close"}
-    # 代理策略同 _install_net_defaults：默认不走系统代理（影视仓/TVBox 跑在
-    # 电视/手机上不读 Windows 代理，走代理 tunnel 常卡 TLS 握手被误判死源）。
+    # 代理策略：① 配置了自定义代理 → 经代理；② use_proxy=True → 跟随系统代理环境变量；
+    # ③ 都没配 → 显式直连（影视仓/TVBox 跑在电视/手机上不读 Windows 代理，
+    #    走代理 tunnel 常卡 TLS 握手被误判死源）。
     handlers = []
-    if use_proxy:
+    _px = _proxy_mod.resolve(proxy)
+    if _px:
+        handlers.append(urllib.request.ProxyHandler(_proxy_mod.proxy_handler_map(_px)))
+    elif use_proxy:
         ph = {}
         for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
             v = os.environ.get(k, "")
@@ -3836,9 +3899,27 @@ def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=Fals
         res["error"] = "构建 opener 失败：%s" % ex
         return res
 
+    # ⚠️ urllib 的 ProxyHandler **不支持 socks5**（需要 PySocks，两个构建环境都没有）。
+    # 故：自定义代理是 socks5/socks5h 时，改走 pyinj_proxy 的内置隧道实现；
+    # http/https 代理与直连仍用 urllib（既有路径，重定向/编码处理更成熟）。
+    _socks_mode = bool(_px and str(_px.get("scheme", "")).startswith("socks"))
+
     def _get(url):
         req = urllib.request.Request(url, headers=headers, method="GET")
         return opener.open(req, timeout=timeout)
+
+    def _fetch(url):
+        """取回 (状态码, 原始字节)。socks5 代理走 pyinj_proxy，其余走 urllib。"""
+        if _socks_mode:
+            r = _proxy_mod.request_via(_px, url, "GET", timeout=timeout,
+                                       read_all=True, headers=headers)
+            if r.get("status") is None:
+                raise OSError(r.get("err") or "无响应")
+            if not r.get("ok"):
+                raise OSError("HTTP %s" % r.get("status"))
+            return r["status"], (r.get("body") or b"")
+        with _get(url) as resp:
+            return (getattr(resp, "status", None) or 200), resp.read()
 
     if "?" in api:
         candidates = [api, api + "&ac=list", api + "&ac=class"]
@@ -3848,8 +3929,7 @@ def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=Fals
     last_err = ""
     for url in candidates:
         try:
-            with _get(url) as resp:
-                raw = resp.read()
+            _code, raw = _fetch(url)
             text = ""
             for enc in ("utf-8", "gbk", "gb18030"):
                 try:
@@ -3893,7 +3973,7 @@ def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=Fals
 
 
 def _probe_http_only(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None,
-                     use_proxy=False, style="", note=""):
+                     use_proxy=False, style="", note="", proxy=None):
     """仅做 HTTP 可达性的测活兜底：XML(type:0) / 目录(type:4) / 无本地 .py
     的 spider 兜底。返回与 probe_py_source 同口径 dict。"""
     res = {"ok": False, "alive": False, "classes": [], "videos": 0,
@@ -3901,7 +3981,7 @@ def _probe_http_only(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None,
     try:
         ok, method, _ = check_url_reachable(
             api, tcp_timeout=min(2.5, timeout),
-            http_timeout=min(4.0, timeout))
+            http_timeout=min(4.0, timeout), proxy=proxy)
     except Exception as ex:
         res["error"] = "%s: %s" % (type(ex).__name__, ex)
         return res
@@ -3914,12 +3994,13 @@ def _probe_http_only(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None,
 
 
 def probe_source(entry, base_dir=None, timeout=PROBE_TIMEOUT_DEFAULT,
-                 ext=None, ua=None, use_proxy=False):
+                 ext=None, ua=None, use_proxy=False, proxy=None):
     """按 type 路由的**全源测活**入口（替代直连 probe_py_source 的 .py 写死）：
       - type:1 直连 CMS      → probe_cms_source（HTTP 取分类判活）
       - type:3 Spider + 本地有 .py → probe_py_source（子进程隔离执行源）
       - type:3 无本地 .py + http → _probe_http_only（仅可达性兜底）
       - type:0 XML / 4 目录 / 其它 → _probe_http_only（仅 HTTP 可达性）
+    proxy：自定义代理串（None = 跟随全局设置；"" = 强制直连）。
     返回 (res, is_py)：
       res：{ok, alive, classes, ...} 同 probe_py_source 口径
       is_py：本次是否走了 .py 子进程（决定 GUI 是否允许「同时删除 .py」）"""
@@ -3932,7 +4013,7 @@ def probe_source(entry, base_dir=None, timeout=PROBE_TIMEOUT_DEFAULT,
 
     if t == 1 and api.startswith("http"):
         return probe_cms_source(api, timeout=timeout, ua=ua,
-                                use_proxy=use_proxy), False
+                                use_proxy=use_proxy, proxy=proxy), False
 
     if t == 3:
         is_spider = (api.startswith("csp_")
@@ -3941,11 +4022,13 @@ def probe_source(entry, base_dir=None, timeout=PROBE_TIMEOUT_DEFAULT,
             py_path = resolve_spider_path(base_dir, api)
             if py_path and os.path.isfile(py_path):
                 return probe_py_source(py_path, timeout=timeout, ext=ext,
-                                       ua=ua, use_proxy=use_proxy), True
+                                       ua=ua, use_proxy=use_proxy,
+                                       proxy=proxy), True
         if is_spider and api.startswith("http"):
             return _probe_http_only(api, timeout=timeout, ua=ua,
                                     use_proxy=use_proxy, style="spider",
-                                    note="未找到本地 .py，仅做 HTTP 可达性"), False
+                                    note="未找到本地 .py，仅做 HTTP 可达性",
+                                    proxy=proxy), False
         res = {"ok": False, "alive": False, "classes": [], "videos": 0,
                "titles": [], "via": "", "style": "spider",
                "error": "未找到本地 .py 文件", "note": ""}
@@ -3956,7 +4039,7 @@ def probe_source(entry, base_dir=None, timeout=PROBE_TIMEOUT_DEFAULT,
         return _probe_http_only(
             api, timeout=timeout, ua=ua, use_proxy=use_proxy,
             style=("xml" if t == 0 else ("dir" if t == 4 else "other")),
-            note="type:%s 仅做 HTTP 可达性判定" % t), False
+            note="type:%s 仅做 HTTP 可达性判定" % t, proxy=proxy), False
     res = {"ok": False, "alive": False, "classes": [], "videos": 0,
            "titles": [], "via": "", "style": "",
            "error": "非 http 接口且非 spider，无法探测", "note": ""}
@@ -3975,8 +4058,32 @@ def source_verdict(r, typ=None):
     return ("ok", "活源") if r.get("alive") else ("bad", "死源")
 
 
+def _socks_without_pysocks(px):
+    """SOCKS5 代理 + 环境缺少 PySocks → 子进程里 py 源自身的 requests/urllib 无法走该代理
+    （requests 会抛 InvalidSchema: Missing dependencies for SOCKS support），
+    此时「死源」结论不可轻信，必须在结果里如实提示，而不是让用户误禁一个好源。"""
+    try:
+        if not px or not str(px.get("scheme", "")).startswith("socks"):
+            return False
+        import importlib.util
+        return importlib.util.find_spec("socks") is None
+    except Exception:
+        return False
+
+
+def _note_socks_caveat(res, warn):
+    """把 SOCKS5 缺 PySocks 的注意事项并入结果的 note（界面会展示）。"""
+    if not warn or not isinstance(res, dict):
+        return res
+    msg = ("当前是 SOCKS5 代理，但环境缺少 PySocks：py 源自身的网络请求可能失败，"
+           "本结论仅供参考（如需测准，请改用代理软件的 HTTP 端口，如 127.0.0.1:7890）")
+    old = str(res.get("note") or "").strip()
+    res["note"] = (old + "；" + msg) if old else msg
+    return res
+
+
 def probe_py_source(py_path, timeout=PROBE_TIMEOUT_DEFAULT, ext=None, ua=None,
-                    use_proxy=False):
+                    use_proxy=False, proxy=None):
     """模拟影视仓加载 py 源：homeContent 取分类栏 → 首页影片，据此判定死源/活源。
 
     在**子进程**中执行（隔离 + 硬超时）：卡死、死循环、阻塞网络请求的源
@@ -3984,6 +4091,8 @@ def probe_py_source(py_path, timeout=PROBE_TIMEOUT_DEFAULT, ext=None, ua=None,
     ext：该站点在配置里的 ext 字段（影视仓会传给源的 init），例如 csp_ 源的配置。
     use_proxy：是否跟随系统代理。默认 False —— 影视仓/TVBox 跑在电视/手机上，
       不读 Windows 代理环境变量；走代理常卡在 TLS 握手，会被误判成死源。
+    proxy：自定义代理串（优先于 use_proxy）。配置后**子进程内 py 源自身的
+      requests/urllib 也会经该代理**（通过注入 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY）。
     返回 dict: {ok, alive, classes, videos, titles, via, style, error, note}
     """
     res = {"ok": False, "alive": False, "classes": [], "videos": 0,
@@ -3993,7 +4102,27 @@ def probe_py_source(py_path, timeout=PROBE_TIMEOUT_DEFAULT, ext=None, ua=None,
         return res
     env = os.environ.copy()
     env["PYINJ_PROBE_UA"] = ua or PROBE_UA
-    env["PYINJ_PROBE_PROXY"] = "1" if use_proxy else "0"
+    px = _proxy_mod.resolve(proxy)
+    _socks_caveat = _socks_without_pysocks(px)
+    if px:
+        # 自定义代理：注入标准代理环境变量（requests/urllib 都会读），
+        # 并让 worker 保留 env（PYINJ_PROBE_PROXY=1 的分支不清空它们）。
+        env.update(_proxy_mod.proxy_env(px))
+        env["PYINJ_PROBE_PROXY"] = "1"
+        env["PYINJ_PROBE_PROXY_SPEC"] = _proxy_mod.format_proxy(px)
+        for k in ("NO_PROXY", "no_proxy"):
+            env.pop(k, None)
+    else:
+        env["PYINJ_PROBE_PROXY"] = "1" if use_proxy else "0"
+        if not use_proxy:
+            # 显式直连：清掉**继承自父进程**的代理环境变量（本机可能全局设了 HTTP_PROXY），
+            # 否则 py 源会被系统代理悄悄接管，与界面「留空=直连」的语义不符。
+            for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                      "http_proxy", "https_proxy", "all_proxy",
+                      "PYINJ_PROBE_PROXY_SPEC"):
+                env.pop(k, None)
+            env["NO_PROXY"] = "*"
+            env["no_proxy"] = "*"
     if ext:
         try:
             env["PYINJ_PROBE_EXT"] = json.dumps(ext, ensure_ascii=False)
@@ -4025,7 +4154,7 @@ def probe_py_source(py_path, timeout=PROBE_TIMEOUT_DEFAULT, ext=None, ua=None,
                 data = json.loads(payload[0])
                 if isinstance(data, dict):
                     res.update({k: v for k, v in data.items() if k in res})
-                    return res
+                    return _note_socks_caveat(res, _socks_caveat)
         err = (p.stderr or b"").decode("utf-8", "replace").strip()
         res["error"] = "源进程无有效输出（退出码 %s）%s" % (
             p.returncode, ("：" + err.splitlines()[-1]) if err else "")
@@ -4039,7 +4168,7 @@ def probe_py_source(py_path, timeout=PROBE_TIMEOUT_DEFAULT, ext=None, ua=None,
                 os.remove(tmp)
             except Exception:
                 pass
-    return res
+    return _note_socks_caveat(res, _socks_caveat)
 
 
 def probe_worker_main():

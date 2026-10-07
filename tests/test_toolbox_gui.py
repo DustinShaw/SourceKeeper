@@ -163,6 +163,8 @@ ok("回环地址判定正常", "正常" in concl, str(concl))
 _nbar, _ = tb._page_bars["net"]
 ok("诊断页进度条走满", _nbar.value() == 100 and _nbar.maximum() == 100,
    "%s/%s" % (_nbar.value(), _nbar.maximum()))
+ok("诊断页内置代理控件行（与主窗口共用同一设置）", hasattr(tb, "proxy_ctl"))
+ok("本页代理验证按钮存在", "验证" in tb.proxy_ctl.btn.text(), tb.proxy_ctl.btn.text())
 
 print("== 6) 直播表转换 ==")
 plist_src = os.path.join(tmp, "list.txt")

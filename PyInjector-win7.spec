@@ -43,6 +43,8 @@ a = Analysis(
         'xml.etree.ElementTree', 'json', 'time', 'io', 'mimetypes',
         # ---- 新增工具模块静态 import 兜底（pyinj_* 自动分析；csv/collections 显式点名）----
         'csv', 'collections',
+        # 自定义代理服务器（与标准版一致：SOCKS5 内置实现，不依赖 PySocks）
+        'pyinj_proxy',
     ],
     hookspath=[],
     hooksconfig={},
