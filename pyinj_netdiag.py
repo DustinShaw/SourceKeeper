@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """源管家 · 网络诊断模块（pyinj_netdiag）
 =========================================
-识别「源是不是需要特殊上网（代理/科学上网）才能用」，而不是源本身坏了。
+识别「源是不是需要代理才能用」，而不是源本身坏了。
 
 判定手段（任一命中即提示，按优先级）：
-  1. **域名命中「需特殊上网域名库」** → 直接标记（用户可自行维护该库）；
+  1. **域名命中「域名特征库」** → 直接标记（用户可自行维护该库）；
   2. **DNS 解析失败**（gaierror）→ 域名无法解析，多半需要代理或已失效；
   3. **连接超时**（timeout，非 refuse）→ 直连被阻断的典型特征（被墙多为超时而非拒绝）。
 
 代理口径：配置了自定义代理服务器（pyinj_proxy）后，诊断**经代理**进行
 （本机 DNS 不再参与，域名的解析交给代理），错误分类重新映射；此时
-「需特殊上网」判定仍以域名库为准。
+「需代理」判定仍以域名库为准。
 
 对外主要接口：
   · diagnose_url(url)       → 单个 URL 的诊断结果 dict
@@ -35,7 +35,7 @@ PROXY_TIMEOUT = 6.0        # 经代理探测的超时（比直连宽松：代理
 
 # 诊断结论等级
 LEVEL_OK = "ok"            # 正常
-LEVEL_PROXY = "proxy"      # 疑似需特殊上网
+LEVEL_PROXY = "proxy"      # 疑似需代理
 LEVEL_DNS = "dns"          # DNS 解析失败
 LEVEL_TIMEOUT = "timeout"  # 连接超时（疑似被阻断）
 LEVEL_REFUSED = "refused"  # 连接被拒绝（服务未开）
@@ -43,7 +43,7 @@ LEVEL_UNKNOWN = "unknown"  # 其它错误
 
 LEVEL_LABELS = {
     LEVEL_OK: "正常",
-    LEVEL_PROXY: "需特殊上网",
+    LEVEL_PROXY: "需代理",
     LEVEL_DNS: "DNS 失败",
     LEVEL_TIMEOUT: "连接超时",
     LEVEL_REFUSED: "连接被拒",
@@ -155,10 +155,10 @@ def diagnose_url(url, proxy_domains=None, proxy=None):
         res["latency_ms"] = r.get("latency_ms")
         level, note = _classify_proxied(r, in_lib)
         if in_lib and level != LEVEL_OK:
-            # 域名库命中优先：无论代理这次结果如何，都提示「需特殊上网」
+            # 域名库命中优先：无论代理这次结果如何，都提示「需代理」
             res["level"] = LEVEL_PROXY
             res["label"] = LEVEL_LABELS[LEVEL_PROXY]
-            res["note"] = "域名在「需特殊上网域名库」中（经代理：%s）" % note
+            res["note"] = "域名在「域名特征库」中（经代理：%s）" % note
             return res
         res["level"] = level
         res["label"] = LEVEL_LABELS.get(level, LEVEL_LABELS[LEVEL_UNKNOWN])
@@ -171,11 +171,11 @@ def diagnose_url(url, proxy_domains=None, proxy=None):
     if dns_ok:
         res["ip"] = ip_or_err
     else:
-        # DNS 都拿不到 → 若在代理库里，就是「需特殊上网」；否则算 DNS 失败
+        # DNS 都拿不到 → 若在代理库里，就是「需代理」；否则算 DNS 失败
         if in_lib:
             res["level"] = LEVEL_PROXY
             res["label"] = LEVEL_LABELS[LEVEL_PROXY]
-            res["note"] = "域名在「需特殊上网域名库」中，且 DNS 解析失败"
+            res["note"] = "域名在「域名特征库」中，且 DNS 解析失败"
         else:
             res["level"] = LEVEL_DNS
             res["label"] = LEVEL_LABELS[LEVEL_DNS]
@@ -186,10 +186,10 @@ def diagnose_url(url, proxy_domains=None, proxy=None):
     level, note, ms = _tcp_probe(host, port)
     res["latency_ms"] = ms
     if in_lib:
-        # 在代理库里：无论通不通，都提示「需特殊上网」（直连时通时不通）
+        # 在代理库里：无论通不通，都提示「需代理」（直连时通时不通）
         res["level"] = LEVEL_PROXY
         res["label"] = LEVEL_LABELS[LEVEL_PROXY]
-        res["note"] = "域名在「需特殊上网域名库」中（%s）" % note
+        res["note"] = "域名在「域名特征库」中（%s）" % note
         return res
     if level == LEVEL_TIMEOUT:
         res["level"] = LEVEL_PROXY                 # 超时=阻断特征 → 也归为需代理

@@ -13,12 +13,12 @@ a = Analysis(
     pathex=[],
     binaries=[],
     # 外置词库随 exe 分发到 data/（分类识别/网络诊断用，用户可编辑免重打包）：
-    #   敏感词库.txt        —— 分类识别（成人/短剧/直播/音乐/音频/点播）
-    #   需特殊上网域名库.txt —— 网络诊断（命中即提示「需特殊上网」）
+    #   分类词库.txt        —— 分类识别（成人/短剧/直播/音乐/音频/点播）
+    #   域名特征库.txt —— 网络诊断（命中即提示「需代理」）
     # 与标准版 PyInjector.spec 对齐（2026-09-29 白天新增 pyinj_kw/pyinj_netdiag 后补齐）。
     datas=[
-        ('data/敏感词库.txt', 'data'),
-        ('data/需特殊上网域名库.txt', 'data'),
+        ('data/分类词库.txt', 'data'),
+        ('data/域名特征库.txt', 'data'),
     ],
     # ---- Qt5 绑定：PySide2（Qt6 版这里是 PySide6，Win7 用不了）----
     # PySide2 5.15.2.1 是 PyPI 上的最新版，Qt5.15；下面 hiddenimports 显式点名它的三个模块，

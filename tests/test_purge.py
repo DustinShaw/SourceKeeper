@@ -129,7 +129,7 @@ try:
     ok("下拉新增「⛔ 仅失效源」", "⛔ 仅失效源" in texts, texts)
     ok("旧选项一个不少",
        all(t in texts for t in ["全部类型", "直连 CMS (1)", "Spider (3)", "XML (0)",
-                                "目录型 (4)", "🔞 仅成人", "⚠️ 仅需特殊上网"]), texts)
+                                "目录型 (4)", "🔞 仅成人", "⚠️ 仅需代理"]), texts)
     dlg.type_filter.setCurrentIndex(texts.index("⛔ 仅失效源"))
     app.processEvents()
     shown = [str(e.get("key", "")) for e in dlg._shown]

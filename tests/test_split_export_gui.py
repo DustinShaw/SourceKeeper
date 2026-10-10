@@ -3,7 +3,7 @@
 
 覆盖本轮 P0/P1：
   · _SplitExportDialog：判定表、纯净版/完整版落盘、adult 叠加检测
-  · 过滤下拉：仅成人 / 仅需特殊上网 / 原 type 过滤保持可用
+  · 过滤下拉：仅成人 / 仅需代理 / 原 type 过滤保持可用
   · _ProxyCheckWorker：复用 pyinj_netdiag，结果写入 proxy_map
 只读本地临时仓库 + 本地 HTTP 服务器，不访问外网。
 """
@@ -94,7 +94,7 @@ opts = [dlg.type_filter.itemText(i) for i in range(dlg.type_filter.count())]
 ok("保留「全部类型」", "全部类型" in opts, str(opts))
 ok("保留「Spider (3)」", "Spider (3)" in opts)
 ok("新增「🔞 仅成人」", any("仅成人" in o for o in opts), str(opts))
-ok("新增「⚠️ 仅需特殊上网」", any("仅需特殊上网" in o for o in opts), str(opts))
+ok("新增「⚠️ 仅需代理」", any("仅需代理" in o for o in opts), str(opts))
 
 print("== 2) 仅成人 过滤（复用 _adult_of + adult 字段）==")
 adult_idx = next(i for i, o in enumerate(opts) if "仅成人" in o)
@@ -112,8 +112,8 @@ dlg.type_filter.setCurrentIndex(0)      # 全部
 app.processEvents()
 ok("全部 → 4 条", len(dlg._shown) == 4, str(len(dlg._shown)))
 
-print("== 4) 仅需特殊上网 过滤（空 proxy_map 时为空）==")
-proxy_idx = next(i for i, o in enumerate(opts) if "仅需特殊上网" in o)
+print("== 4) 仅需代理 过滤（空 proxy_map 时为空）==")
+proxy_idx = next(i for i, o in enumerate(opts) if "仅需代理" in o)
 dlg.type_filter.setCurrentIndex(proxy_idx)
 app.processEvents()
 ok("未体检时无命中", len(dlg._shown) == 0, str(len(dlg._shown)))

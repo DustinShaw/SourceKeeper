@@ -114,6 +114,19 @@ cats3 = pyinj_kw.detect_categories("番組紹介：含テスト用語的内容",
 check(cats3.get("adult") == "テスト用語",
       "文件追加的日语词驱动 detect_categories 命中（文件词影响智能分类）")
 
+print("== 3d. 命中词展示：成人只回标签、不回显词（pyinj_kw.format_hits）==")
+_h = pyinj_kw.detect_categories("", site_name="エロ動画まとめ")
+check(_h.get("adult") == "エロ", "前置：确实命中了成人词（判定能力未受影响）")
+check("エロ" not in pyinj_kw.format_hits(_h), "成人命中词不出现在展示串里")
+check("成人" in pyinj_kw.format_hits(_h), "成人分类仍以标签形式出现")
+_h3 = {"adult": "エロ", "duanju": "短剧"}
+_s3 = pyinj_kw.format_hits(_h3)
+check(_s3 == "成人、短剧:短剧", "混合命中：成人仅标签 + 非成人带词（实际 %r）" % _s3)
+_h4 = pyinj_kw.detect_categories("这是短剧站点", "测试站")
+_s4 = pyinj_kw.format_hits(_h4)
+check("短剧:" in _s4, "非成人分类照旧「分类:词」展示便于核对（%s）" % _s4)
+check(pyinj_kw.format_hits({}) == "", "空命中 → 空串")
+
 print("== 4. 词库单一来源 ==")
 check(core._ADULT_ZH == pyinj_kw._FALLBACK["adult"]["zh"],
       "pyinj_core._ADULT_ZH 即 pyinj_kw 兜底 adult.zh")
@@ -127,7 +140,7 @@ check([l for l, _w, _b in core._ADULT_ALL] == list(pyinj_kw._LANGS),
 check(pyinj_kw._LANG_BOUNDARY == {"en"}, "仅英文使用整词边界（zh/ja/ko/ru/th 子串）")
 check("SM" not in core._ADULT_ZH and "SM" not in pyinj_kw._FALLBACK["adult"]["zh"],
       "裸 SM 已从两处词库剔除")
-kws = pyinj_kw.load_keywords()  # data/敏感词库.txt 在，兜底词条也必须保留
+kws = pyinj_kw.load_keywords()  # data/分类词库.txt 在，兜底词条也必须保留
 check("黄色" in kws["adult"]["zh"] and "巨乳" in kws["adult"]["zh"],
       "load_keywords() 合并结果含新词（文件词叠加兜底词）")
 

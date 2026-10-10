@@ -197,7 +197,7 @@ def render_markdown(report):
     lines.append("| --- | --- |")
     lines.append("| 可达 | %d |" % s.get("reachable", 0))
     lines.append("| 不可达 | %d |" % s.get("unreachable", 0))
-    lines.append("| 疑似需特殊上网 | %d |" % s.get("proxy", 0))
+    lines.append("| 疑似需代理 | %d |" % s.get("proxy", 0))
     lines.append("| DNS 解析失败 | %d |" % s.get("dns_fail", 0))
     lines.append("| JAR 源（健康/异常） | %d（%d/%d） |" % (
         s.get("jar_total", 0), s.get("jar_ok", 0), s.get("jar_bad", 0)))

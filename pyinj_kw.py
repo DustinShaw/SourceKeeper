@@ -2,11 +2,11 @@
 """源管家 · 词库加载模块（pyinj_kw）
 ====================================
 把原先**硬编码在 pyinj_core.py 里的关键词**抽取成「可编辑的本地文本文件」
-（见 data/敏感词库.txt 与 data/需特殊上网域名库.txt），并对外提供统一的：
+（见 data/分类词库.txt 与 data/域名特征库.txt），并对外提供统一的：
 
   · load_keywords()      → {分类: {zh/en/ja/ko/ru/th: [...]}}
   · detect_categories()  → 一条源命中的分类集合（成人/短剧/直播/音乐/音频/点播）
-  · load_proxy_domains() → 需特殊上网域名列表
+  · load_proxy_domains() → 需代理域名列表
   · domain_needs_proxy() → 某域名是否命中该库
 
 设计原则：
@@ -19,7 +19,7 @@ import os
 import re
 import sys
 
-# --- 内置兜底词库（词库文件缺失时使用；内容与 data/敏感词库.txt 初次生成时一致）---
+# --- 内置兜底词库（词库文件缺失时使用；内容与 data/分类词库.txt 初次生成时一致）---
 # 成人词表 = 全项目单一来源（pyinj_core.detect_adult 也从这里取），
 # 2026-10-04 合并了 pyinj_core 旧 _ADULT_ZH/_ADULT_EN 与本表的全部词条并补充：
 #   黄色/黄片/黄站/黄网/巨乳/爆乳/乱伦/换妻/偷拍/自慰/嫩模/楼凤（中文）
@@ -101,8 +101,8 @@ _LANG_LINE_PREFIX = {
     "俄文": "ru", "俄语": "ru",
     "泰文": "th", "泰语": "th",
 }
-KW_FILENAME = "敏感词库.txt"
-PROXY_FILENAME = "需特殊上网域名库.txt"
+KW_FILENAME = "分类词库.txt"
+PROXY_FILENAME = "域名特征库.txt"
 
 
 def get_data_dir():
@@ -125,7 +125,7 @@ def _split_words(s):
 
 
 def load_keywords(data_dir=None):
-    """读取敏感词库文件，返回 {分类: {zh: (...), en: (...), ja/ko/ru/th: (...)}}。
+    """读取分类词库文件，返回 {分类: {zh: (...), en: (...), ja/ko/ru/th: (...)}}。
     文件不存在/某分类缺失 → 用内置兜底补全（保证 6 个分类、全部语言桶齐全）；
     文件里出现「日文 =/韩文 =/俄文 =/泰文 =」等行时叠加进对应语言桶。"""
     d = data_dir or get_data_dir()
@@ -170,7 +170,7 @@ def load_keywords(data_dir=None):
 
 
 def load_proxy_domains(data_dir=None):
-    """读取「需特殊上网域名库」文件，返回小写域名元组（去重保序）。"""
+    """读取「域名特征库」文件，返回小写域名元组（去重保序）。"""
     d = data_dir or get_data_dir()
     path = os.path.join(d, PROXY_FILENAME)
     if not os.path.isfile(path):
@@ -259,8 +259,27 @@ CAT_LABELS = {
 }
 
 
+def format_hits(hits, labels=None):
+    """把 detect_categories() 的结果拼成「分类:命中词」展示串。
+
+    ⚠️ 成人项**只回分类标签、不回命中词** —— 判定结果不受影响，但露骨词
+    不会上屏（避免被截图 / 录屏 / 终端日志外带）。这也是「命中词不外显」
+    这条规则的**唯一真源**：UI 一律调本函数，不要在别处自行拼接。
+
+    其余分类（短剧/直播/音乐/音频/点播）词条不敏感，照旧「分类:词」。
+    """
+    lab = labels if labels is not None else CAT_LABELS
+    parts = []
+    for c, w in (hits or {}).items():
+        if c == "adult":
+            parts.append(lab.get(c, c))
+        else:
+            parts.append("%s:%s" % (lab.get(c, c), w))
+    return "、".join(parts)
+
+
 def domain_needs_proxy(domain, proxy_domains=None):
-    """domain 是否命中「需特殊上网域名库」（子域名/后缀匹配）。"""
+    """domain 是否命中「域名特征库」（子域名/后缀匹配）。"""
     doms = proxy_domains if proxy_domains is not None else load_proxy_domains()
     d = (domain or "").lower().strip().rstrip(".")
     if not d:

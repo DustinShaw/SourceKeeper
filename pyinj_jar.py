@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """源管家 · Spider JAR 健康检查模块（pyinj_jar）
 =================================================
-TVBox/影视仓里有一类 **jar 型 spider 源**：
+配置里有一类 **jar 型 spider 源**：
     { "key": "csp_Xxx", "name": "Xxx", "type": 3, "api": "csp_Xxx",
       "jar": "http://xxx/drpy.jar" }
 其 `api` 是一个**类名**（csp_Xxx），真正干活的代码在远程 `jar` 里。所以：

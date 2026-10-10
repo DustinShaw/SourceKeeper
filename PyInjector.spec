@@ -8,16 +8,16 @@ a = Analysis(
     pathex=[],
     binaries=[],
     # 外置词库（可编辑的本地文本文件）随 exe 一并分发到 data/ 目录：
-    #   敏感词库.txt        —— 分类识别用（成人/短剧/直播/音乐/音频/点播）
-    #   需特殊上网域名库.txt —— 网络诊断用（命中即提示「需特殊上网」）
+    #   分类词库.txt        —— 分类识别用（成人/短剧/直播/音乐/音频/点播）
+    #   域名特征库.txt —— 网络诊断用（命中即提示「需代理」）
     # 运行时 pyinj_kw.get_data_dir() 会优先在 exe 同目录的 data/ 下找它们；
     # 用户可直接编辑这两个文件定制词库，无需重新打包。
     datas=[
-        ('data/敏感词库.txt', 'data'),
-        ('data/需特殊上网域名库.txt', 'data'),
+        ('data/分类词库.txt', 'data'),
+        ('data/域名特征库.txt', 'data'),
     ],
     # 源测活：被测 py 源是 exec 动态加载的，PyInstaller 的静态分析看不见它们的
-    # import，必须在 hiddenimports 显式打包（影视仓 PyLoader 同样自带这些库）。
+    # import，必须在 hiddenimports 显式打包（宿主程序 PyLoader 同样自带这些库）。
     # 普查自 py/*.py 实际用到的第三方库（2026-09-26.c）：
     #   requests / pyquery / bs4(+lxml) / ujson / cachetools
     hiddenimports=[

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""源测活：模拟影视仓加载 py 源（homeContent 分类栏 → 首页影片），判定死源。
+"""源测活：模拟宿主程序加载 py 源（homeContent 分类栏 → 首页影片），判定死源。
 
 A) pyinj_core 纯逻辑（零 Qt，子进程真跑假 spider）
 B) 真实 Qt（offscreen）的 _ProbeDialog：表格判定 + 模拟分类标签栏
@@ -55,14 +55,14 @@ def categoryContent(tid, pg, f, ext):
 ''')
 r = C.probe_py_source(p_fn, timeout=10)
 ok("函数式源跑通", r["ok"], r.get("error"))
-ok("分类栏 = 影视仓顶部标签", r["classes"] == ["鬼片大全", "大陆鬼片", "港台鬼片"], r["classes"])
+ok("分类栏 = 宿主程序顶部标签", r["classes"] == ["鬼片大全", "大陆鬼片", "港台鬼片"], r["classes"])
 ok("首页取到影片", r["videos"] == 3, r["videos"])
 ok("首页走 homeVideoContent", r["via"] == "homeVideoContent", r["via"])
 ok("标题样例读得出", r["titles"][:2] == ["片A", "片B"], r["titles"])
 ok("判定为活源", C.probe_verdict(r) == ("ok", "活源"), C.probe_verdict(r))
 ok("入口形态识别为 module", r["style"] == "module", r["style"])
 
-print("\n== A2) 类式源 + ext 配置（影视仓把站点 ext 传给 init）==")
+print("\n== A2) 类式源 + ext 配置（宿主程序把站点 ext 传给 init）==")
 p_cls = spider("cls.py", '''
 class Spider:
     def init(self, extend):
@@ -126,7 +126,7 @@ ok("超时被杀掉", not r8["ok"] and "超时" in r8["error"], r8.get("error"))
 ok("超时判为异常而非活源", C.probe_verdict(r8)[0] == "err", C.probe_verdict(r8))
 ok("耗时受控（< 20s）", cost < 20, "%.1fs" % cost)
 
-print("\n== A9) UA 兜底：源自己没设 UA 时按影视仓的移动端 UA 兜底 ==")
+print("\n== A9) UA 兜底：源自己没设 UA 时按宿主程序的移动端 UA 兜底 ==")
 seen = []
 
 
@@ -186,7 +186,7 @@ finally:
 ok("非 UTF-8 locale 下中文分类名仍不乱码",
    r10["classes"] == ["鬼片大全", "大陆鬼片", "港台鬼片"], r10["classes"])
 
-print("\n== A11) 源依赖 requests 与 base.spider 基类 fetch（影视仓运行时自带的能力）==")
+print("\n== A11) 源依赖 requests 与 base.spider 基类 fetch（宿主程序运行时自带的能力）==")
 srv2 = http.server.HTTPServer(("127.0.0.1", 0), _H)
 port2 = srv2.server_address[1]
 threading.Thread(target=srv2.serve_forever, daemon=True).start()
@@ -286,7 +286,7 @@ finally:
         else:
             os.environ[k] = _old_proxy
 names13 = r13.get("classes") or []
-ok("子进程里系统代理已被清掉（与影视仓一致）",
+ok("子进程里系统代理已被清掉（与宿主程序一致）",
    any(n.startswith("proxy=") and n[len("proxy="):] in ("", "None") for n in names13), names13)
 ok("socket 有兜底超时（源不带 timeout 也不会无限卡）",
    any(n.startswith("timeout=") and n[len("timeout="):] not in ("None", "0", "0.0")

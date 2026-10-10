@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """源管家 · 播放列表互转模块（pyinj_playlist）
 ================================================
-处理 TVBox/影视仓配置里 `lives[].url` 指向的 **直播源列表**（通常是
+处理配置里 `lives[].url` 指向的 **直播源列表**（通常是
 `.txt` 或 `.m3u/.m3u8`）。这两格式在国内 IPTV 圈里被大量互相转换，本模块
 以「新增模块」方式补上互转能力，便于用户把手上各种来源的频道表统一。
 
 格式说明：
-  · **TXT**（TVBox 通用「频道名,地址」）：
+  · **TXT**（通用「频道名,地址」）：
         频道名,#genre#
         频道名,http://xxx/playlist.m3u8
         频道名,http://xxx/live.m3u8
-    其中 `xxx,#genre#` 是**分组标记**（TVBox 用它做分类）。
+    其中 `xxx,#genre#` 是**分组标记**（宿主程序用它做分类）。
   · **M3U/M3U8**：
         #EXTM3U
         #EXTINF:-1 tvg-name="频道名" group-title="分组",频道名
@@ -45,7 +45,7 @@ def is_m3u(text):
 
 
 def is_txt(text):
-    """是否 TVBox 风格 TXT（存在非注释的 `名称,地址` 行）。"""
+    """是否通用风格 TXT（存在非注释的 `名称,地址` 行）。"""
     if is_m3u(text):
         return False
     for raw in (text or "").splitlines():
@@ -62,7 +62,7 @@ def _clean(name):
 
 
 def parse_txt(text):
-    """解析 TVBox TXT 频道表 → [{"group","name","url"}, ...]。
+    """解析 通用 TXT 频道表 → [{"group","name","url"}, ...]。
     `名称,#genre#` 视为分组切换；`名称,url` 为频道。"""
     items = []
     cur_group = DEFAULT_GROUP
@@ -126,7 +126,7 @@ def parse_m3u(text):
 # 生成
 # ----------------------------------------------------------------------------
 def to_txt(items):
-    """[{"group","name","url"}] → TVBox TXT 文本（按 group 输出 #genre# 标记）。"""
+    """[{"group","name","url"}] → 通用 TXT 文本（按 group 输出 #genre# 标记）。"""
     lines = []
     cur = None
     for it in items or []:

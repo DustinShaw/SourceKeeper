@@ -2,9 +2,9 @@
 """
 源管家 —— 绿色 exe 工具（Qt / PySide6 版，带 CLI 模式）
 =============================================================
-TVBox / 影视仓 / FongMi TV 等支持 py 接口 APP 的「全源」配置管理器。
-用途：把新的 spider 源（.py / .js / .jar / csp_）与直连 CMS 源（type:1）
-统一登记、编辑、查重、测活进 py.json 的 sites 数组，
+JSON / JSONC 配置的「sites」站点数组批量管理器。
+用途：把新的插件脚本条目（.py / .js / .jar / csp_）与直连接口条目（type:1）
+统一登记、编辑、查重、存活检测进配置文件的 sites 数组，
 免去手工拼 key / name / api、手改 JSONC 的麻烦。本软件由 AI 辅助生成。
 
 特点：
@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "2610071535"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "2610102045"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
 APP_TITLE_SUFFIX = "%s v%s" % (APP_NAME, APP_VERSION)   # 窗体标题统一后缀（所有标题栏都标注版本）
@@ -127,7 +127,7 @@ globals().update({n: getattr(_core, n) for n in dir(_core)
 # ----------------------------------------------------------------------------
 # 新增工具模块（全部零 Qt 纯逻辑，"以新增模块方式"扩展，不改动 pyinj_core）：
 #   pyinj_sections : lives/parses 数组管理 + sites/分区拖拽排序
-#   pyinj_kw       : 外置词库加载（敏感词库 / 需特殊上网域名库）+ 分类识别
+#   pyinj_kw       : 外置词库加载（分类词库 / 域名特征库）+ 分类识别
 #   pyinj_speed    : 延迟采样 + 前 N 字节真实下载判活的测速
 #   pyinj_netdiag  : DNS / 超时-拒绝区分 / 代理域名库命中的网络诊断
 #   pyinj_jar      : jar 型 spider 源的远程 jar 健康体检
@@ -253,8 +253,8 @@ def run_cli(argv):
 
     p = argparse.ArgumentParser(
         prog="源管家",
-        description="TVBox / 影视仓 全源管理器（无界面模式）：管理配置 sites 数组里的 "
-                    "Spider 脚本源与直连 CMS 源。",
+        description="源管家（无界面模式）：批量维护 JSON / JSONC 配置里的 "
+                    "sites 站点数组——插件脚本条目（type:3）与直连接口条目（type:1）。",
     )
     p.add_argument("--repo", default=get_app_dir(), help="仓库根目录（含 spider 配置 json），默认 exe 所在目录")
     p.add_argument("--inject", nargs="+", metavar="FILE", help="要注入的 .py 文件（可多个）")
@@ -274,7 +274,7 @@ def run_cli(argv):
     p.add_argument("--live-scan", action="store_true", help="检测直播类站点（读 .py 内容+站点名）；配合 --write 批量注释禁用")
     p.add_argument("--check-url", action="store_true", help="检测各站点 .py 中的源地址 URL 是否可达（多种方法，任一可达即有效）")
     p.add_argument("--probe", action="store_true",
-                   help="源测活：按 type 路由（直连 CMS 走 HTTP 取分类栏；spider 加载 .py 取 homeContent 分类栏 → 首页影片），判定死源/活源")
+                   help="存活检测：按 type 路由（直连接口走 HTTP 取分类列表；插件脚本加载 .py 取 homeContent 分类列表），判定失效/可用")
     p.add_argument("--disable", dest="disable_keys", nargs="+", metavar="KEY", help="禁用指定 key 的站点（注释掉对应配置，立即写入；需 --write）")
     p.add_argument("--enable", dest="enable_keys", nargs="+", metavar="KEY", help="启用指定 key 的站点（取消注释，立即写入；需 --write）")
     p.add_argument("--del", dest="del_keys", nargs="+", metavar="KEY", help="删除指定 key 的站点（可多个）")
@@ -405,8 +405,9 @@ def run_cli(argv):
             print("\n未检测到成人内容站点（或均已标注）。")
             return 0
         print("\n检测到 %d 个成人内容站点（将标注 adult=1）：" % len(marked))
-        for key, name, kw in marked:
-            print("  %s (%s)  [命中: %s]" % (key, name, kw))
+        for key, name, _kw in marked:
+            # 不回显命中词：避免露骨词出现在终端/日志里（判定结果不受影响）
+            print("  %s (%s)" % (key, name))
         if not args.write:
             print("\n[预览模式] 未修改文件。加 --write 才真正写入 py.json。")
             return 0
@@ -534,7 +535,7 @@ def run_cli(argv):
                          " · ".join((r.get("classes") or [])[:6]), r.get("videos", 0)))
             elif lvl == "bad":
                 dead.append(key)
-                print("  ✗ %-18s 死源  %s" % (key, "分类为空（影视仓里不会显示分类栏）"))
+                print("  ✗ %-18s 死源  %s" % (key, "分类为空（宿主程序里不会显示分类栏）"))
             elif lvl == "none":
                 print("  ? %-18s %s" % (key, r.get("error") or "无资源"))
             else:
@@ -884,7 +885,7 @@ def run_gui():
             # ---- 阶段 A：解析「本地 Spider 源」的资源文件真实路径 ----
             # 只有「本地 Spider」才有本地文件；type:1 直连 / 0 XML / 4 目录 / 远程源
             # 均无本地文件，直接跳过（不再对它们做无意义的遍历与「未找到」）。
-            # expects_local_file 为权威口径（兼容影视仓字符串 type 变体）。
+            # expects_local_file 为权威口径（兼容宿主程序字符串 type 变体）。
             spider_entries = [e for e in self.entries if expects_local_file(e)]
             roots = default_search_roots(self.repo_dir, self.cfg_name) if self.repo_dir else []
             name_map = {}
@@ -1093,7 +1094,7 @@ def run_gui():
             self.finished_map.emit(m)
 
     class _ProxyCheckWorker(QThread):
-        """「需特殊上网」后台线程：对每个站点用 pyinj_netdiag.diagnose_source
+        """「需代理」后台线程：对每个站点用 pyinj_netdiag.diagnose_source
         判断是否命中「DNS 失败 / 命中代理域名库 / 连接被拒」等需要代理的情形。
         结果通过 finished_map 发回：key -> bool。只读检测，不改配置。"""
 
@@ -1466,7 +1467,7 @@ def run_gui():
             try:
                 QMessageBox.about(
                     self, tagged_title("关于"),
-                    "源管家 — TVBox / 影视仓 全源管理器\n\n版本：%s\n\n"
+                    "源管家 — JSON 配置与站点批量管理器\n\n版本：%s\n\n"
                     "🤖 本软件由 AI 辅助生成（仅供个人学习测试之用）\n\n"
                     "绿色单文件 · 免安装 · 双模式（GUI / CLI）\n"
                     "仅做静态解析与只读 HTTP 探测，绝不执行任何爬虫代码。" % APP_VERSION)
@@ -2121,7 +2122,7 @@ def run_gui():
             self._adult_resolved = {}  # 成人线程解析结果（key->py_path），供 URL 检测复用
             self._adult_name_map = {}  # 成人线程遍历结果（文件名->路径）
             self.url_map = {}          # key -> (code, method, note)
-            self.proxy_map = {}        # key -> bool：该站点是否需要特殊上网（代理）；由「网络体检」填充
+            self.proxy_map = {}        # key -> bool：该站点是否需要代理；由「网络体检」填充
             self._proxy_scanning = False
             self._proxy_stop = False
             self._proxy_paused = False
@@ -2440,10 +2441,10 @@ def run_gui():
             self.url_label.setText("URL 可达性检测：正在停止…")
             self._update_detect_ui()
 
-        # ---- 需特殊上网（代理）体检：复用 pyinj_netdiag.diagnose_source ----
+        # ---- 需代理体检：复用 pyinj_netdiag.diagnose_source ----
         def scan_proxy_sites(self):
-            """后台体检全部站点：判定哪些「需要特殊上网（代理）」，结果填入 proxy_map，
-            供过滤下拉的「⚠️ 仅需特殊上网」使用。只读，不改配置。"""
+            """后台体检全部站点：判定哪些「需要代理」，结果填入 proxy_map，
+            供过滤下拉的「⚠️ 仅需代理」使用。只读，不改配置。"""
             if self._closed or self._proxy_scanning:
                 return
             if not self.entries:
@@ -2464,7 +2465,7 @@ def run_gui():
             self.proxy_map = dict(m or {})
             n = sum(1 for v in self.proxy_map.values() if v)
             self._refresh_table()
-            self._toast("网络体检完成：%d 个站点可能需要特殊上网" % n)
+            self._toast("网络体检完成：%d 个站点可能需要代理" % n)
 
         # ---- 共用检测控制（勾选类型 + 一套 开始/暂停/停止）----
         def _start_detect(self):
@@ -2859,16 +2860,16 @@ def run_gui():
             # 搜索行：现代风——无标签、框内搜索占位符 + 内置清空 ×，回车跳下一个匹配
             self._busy_buttons = []   # 检测期间禁用的按钮（关闭按钮除外）
             sh = QHBoxLayout()
-            # 过滤下拉：兼容原有「按 type」过滤，并新增「仅成人 / 仅需特殊上网」两个维度
+            # 过滤下拉：兼容原有「按 type」过滤，并新增「仅成人 / 仅需代理」两个维度
             # （保留旧选项，不删除；新增项排在后面，用 _filter_spec 描述过滤方式）
             self.type_filter = QComboBox()
             self.type_filter.addItems([
                 "全部类型", "直连 CMS (1)", "Spider (3)", "XML (0)", "目录型 (4)",
-                "🔞 仅成人", "⚠️ 仅需特殊上网", "⛔ 仅失效源",
+                "🔞 仅成人", "⚠️ 仅需代理", "⛔ 仅失效源",
             ])
             self.type_filter.setToolTip(
                 "过滤表格：按接口类型 0=XML / 1=JSON直连(CMS) / 3=Spider(含 .py/.js/.jar/csp_) / 4=目录型；"
-                "或只看 🔞 成人站点、⚠️ 需特殊上网（代理）站点（后者需先在工具箱跑过网络诊断）、"
+                "或只看 🔞 成人站点、⚠️ 需代理站点（后者需先在工具箱跑过网络诊断）、"
                 "⛔ 仅失效源（URL 不可达或本地脚本缺失，需先跑对应检测）")
             self.type_filter.setMinimumWidth(140)
             self.type_filter.currentIndexChanged.connect(self._on_type_filter)
@@ -3311,7 +3312,7 @@ def run_gui():
                                or kw in str(e.get("api", "")).lower()]
             else:
                 self._shown = list(self.entries)
-            # 按过滤维度收窄（下拉框）：type(0/1/3/4) / 仅成人 / 仅需特殊上网
+            # 按过滤维度收窄（下拉框）：type(0/1/3/4) / 仅成人 / 仅需代理
             tf = getattr(self, "_type_filter", None)
             if tf is not None:
                 kind = tf[0]
@@ -3652,7 +3653,7 @@ def run_gui():
                 pass
 
         def _on_type_filter(self, idx):
-            """按选中的过滤维度收窄表格：type（0/1/3/4）/ 仅成人 / 仅需特殊上网。"""
+            """按选中的过滤维度收窄表格：type（0/1/3/4）/ 仅成人 / 仅需代理。"""
             specs = getattr(self, "_filter_spec", None)
             self._type_filter = specs[idx] if (specs and 0 <= idx < len(specs)) else None
             self._refresh_table()
@@ -3713,8 +3714,8 @@ def run_gui():
             _is_ad, _auto = self._adult_of(e)
             vadult.setChecked(_is_ad)
             if _auto:
-                _kw = self.detect_map.get(str(e.get("key", "")), (False, None))[1]
-                vadult.setText("涉及成人内容（R18）——自动检测命中: %s" % _kw)
+                # 只提示「由自动检测判定」，不回显命中词（避免露骨词上屏）
+                vadult.setText("涉及成人内容（R18）——由自动检测判定")
             fl.addRow("站点标识 key（不可改）:", QLabel(key))
             fl.addRow("名称 name:", vn)
             fl.addRow("接口地址 api:", va)
@@ -4058,7 +4059,7 @@ def run_gui():
                 if str(e.get("key", "")) in done:
                     e["_disabled"] = True
             self._refresh_table()
-            msg = "已禁用 %d 个短剧类站点（注释掉配置，TVBox 等将忽略）。\n备份：%s" % (
+            msg = "已禁用 %d 个短剧类站点（注释掉配置，宿主程序将忽略）。\n备份：%s" % (
                 len(done), os.path.basename(bak))
             if failed:
                 msg += "\n⚠ 未找到：%s" % "、".join(failed)
@@ -4104,7 +4105,7 @@ def run_gui():
                 if str(e.get("key", "")) in done:
                     e["_disabled"] = True
             self._refresh_table()
-            msg = "已禁用 %d 个直播类站点（注释掉配置，TVBox 等将忽略）。\n备份：%s" % (
+            msg = "已禁用 %d 个直播类站点（注释掉配置，宿主程序将忽略）。\n备份：%s" % (
                 len(done), os.path.basename(bak))
             if failed:
                 msg += "\n⚠ 未找到：%s" % "、".join(failed)
@@ -4289,7 +4290,7 @@ def run_gui():
 
         # ---- 源测活（按 type 路由：type:1 直连 HTTP 取分类 / type:3 本地 .py 子进程）----
         def probe_config(self):
-            """对可探测的源逐个模拟影视仓加载：分类栏出不来 = 死源。
+            """对可探测的源逐个模拟宿主程序加载：分类栏出不来 = 死源。
             覆盖：type:1 直连 CMS（HTTP 取分类判活）、type:3 本地 .py（子进程隔离）、
             type:0/4 且 http 的源（HTTP 可达性兜底）。"""
             roots = default_search_roots(self.repo_dir, self.cfg_file)
@@ -4765,7 +4766,7 @@ def run_gui():
         def _build(self):
             root = QVBoxLayout(self)
             tip = QLabel(
-                "把另一份影视仓配置的站点合并进当前仓库。<br>"
+                "把另一份宿主程序配置的站点合并进当前仓库。<br>"
                 "判重口径：功能身份 = <b>(type + api + jar + ext)</b> 四元组；"
                 "jar 型多站点（同名类名 + 不同 ext）<b>不会被误并</b>。<br>"
                 "写入后保留条目全部字段，并自动搬运配套 .py/.js/.drpy 与 jar"
@@ -5245,7 +5246,7 @@ def run_gui():
                 self.decisions[rel_item.text()] = dec
             self.accept()
 
-    # ---- 源测活：模拟影视仓加载 py 源（homeContent 分类栏 → 首页影片），判定死源 ----
+    # ---- 源测活：模拟宿主程序加载 py 源（homeContent 分类栏 → 首页影片），判定死源 ----
     def _probe_esc(s):
         """HTML 转义：分类名里可能带 & < >。"""
         return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -5304,7 +5305,7 @@ def run_gui():
                 pass
 
     class _ProbeDialog(QDialog):
-        """源测活结果：表格 + 模拟影视仓顶部那一排分类标签（截图里的红框区）。"""
+        """源测活结果：表格 + 模拟宿主程序顶部那一排分类标签（截图里的红框区）。"""
 
         P_NAME, P_VERDICT, P_CLASSES, P_TABS, P_VIDEOS, P_NOTE = 0, 1, 2, 3, 4, 5
 
@@ -5317,14 +5318,14 @@ def run_gui():
             self._worker = None
             self._closed = False
             self.base_dir = getattr(parent, "base_dir", None)
-            self.setWindowTitle(tagged_title("🩺 源测活（模拟影视仓加载）"))
+            self.setWindowTitle(tagged_title("🩺 源测活（模拟宿主程序加载）"))
             self.resize(920, 580)
             root = QVBoxLayout(self)
 
             tip = QLabel(
                 "<b>测活原理</b>　按 type 路由：直连 CMS(type:1) 走 HTTP 取分类栏；"
                 "Spider(type:3) 在子进程里加载 .py → 调 homeContent 取分类栏"
-                "（即影视仓顶部那一排标签）→ 再取首页影片；<b>分类栏出不来 = 死源</b>。"
+                "（即宿主程序顶部那一排标签）→ 再取首页影片；<b>分类栏出不来 = 死源</b>。"
                 "<br><b>操作提示</b>　💡 双击一行 = 按 type 打开对应目标（本地 .py / 所依赖的 jar / API 链接）；"
                 "右键 = 编辑配置 / 打开目标（按 type）/ 禁用 / 删除。")
             tip.setTextFormat(Qt.RichText)
@@ -5333,7 +5334,7 @@ def run_gui():
 
             self.table = QTableWidget(len(items), 6)
             self.table.setHorizontalHeaderLabels(
-                ["名称", "判定", "分类数", "分类标签预览（影视仓红框区）", "首页影片", "说明"])
+                ["名称", "判定", "分类数", "分类标签预览（宿主程序红框区）", "首页影片", "说明"])
             self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
             self.table.verticalHeader().setVisible(False)
@@ -5358,7 +5359,7 @@ def run_gui():
                     self._set(r, c, name if c == self.P_NAME else
                               ("待测…" if c == self.P_VERDICT else ""))
 
-            # 模拟影视仓的分类标签栏（选中行的完整预览）
+            # 模拟宿主程序的分类标签栏（选中行的完整预览）
             self.lbl_prev = QLabel("选中一行查看该源的完整分类栏")
             root.addWidget(self.lbl_prev)
             self.preview = QLabel("")
@@ -5423,7 +5424,7 @@ def run_gui():
             return "#6b7683" if not dark else "#9aa4b0"
 
         def _tab_html(self, names):
-            """把分类名渲染成影视仓顶部标签栏的样子（截图红框那一排）。"""
+            """把分类名渲染成宿主程序顶部标签栏的样子（截图红框那一排）。"""
             dark = bool(IS_DARK)
             bg = "#3a4048" if dark else "#eef2f7"
             fg = "#e6e9ed" if dark else "#2c3e50"
@@ -5448,9 +5449,9 @@ def run_gui():
             lvl, verdict = source_verdict(res)
             names = res.get("classes") or []
             note = str(res.get("note") or "")
-            self.lbl_prev.setText("“%s” 在影视仓里的分类栏（%s）" % (name, verdict))
+            self.lbl_prev.setText("“%s” 在宿主程序里的分类栏（%s）" % (name, verdict))
             if not names:
-                txt = res.get("error") or "分类为空：影视仓里不会显示分类栏，判为死源。"
+                txt = res.get("error") or "分类为空：宿主程序里不会显示分类栏，判为死源。"
                 if note:
                     txt += "\n" + note
                 self.preview.setText(txt)
@@ -6069,7 +6070,7 @@ def run_gui():
         def _build_cat(self, page):
             v = QVBoxLayout(page)
             h = QHBoxLayout()
-            h.addWidget(QLabel("按站点名 + .py 内容，用「敏感词库.txt」判定分类标签。"))
+            h.addWidget(QLabel("按站点名 + .py 内容，用「分类词库」判定分类标签。"))
             h.addStretch(1)
             b = QPushButton("▶ 开始识别", clicked=self._run_cat)
             self._tool_buttons.append(b)
@@ -6103,8 +6104,8 @@ def run_gui():
                     return None
                 labels = "·".join(pyinj_kw.CAT_LABELS.get(c, c)
                                  for c in pyinj_kw._CAT_ORDER if c in cats)
-                words = "、".join("%s:%s" % (pyinj_kw.CAT_LABELS.get(c, c), w)
-                                  for c, w in cats.items())
+                # 成人项不回显命中词（规则唯一真源：pyinj_kw.format_hits）
+                words = pyinj_kw.format_hits(cats)
                 return (name, str(source_type_of(e)), labels, words)
 
             def done(rows):
@@ -6222,7 +6223,7 @@ def run_gui():
         def _build_net(self, page):
             v = QVBoxLayout(page)
             h = QHBoxLayout()
-            h.addWidget(QLabel("DNS 解析 / 连接超时 vs 拒绝 / 命中「需特殊上网域名库」。"))
+            h.addWidget(QLabel("DNS 解析 / 连接超时 vs 拒绝 / 命中「域名特征库」。"))
             h.addStretch(1)
             b = QPushButton("▶ 开始诊断", clicked=self._run_net)
             self._tool_buttons.append(b)
@@ -6264,7 +6265,7 @@ def run_gui():
                 px = sum(1 for r in rows if r[2] == "是")
                 via = "经代理" if pyinj_proxy.get_active() else "直连"
                 self._progress_done(
-                    "net", "网络诊断完成（%s）：共 %d 个源，疑似需特殊上网 %d 个。"
+                    "net", "网络诊断完成（%s）：共 %d 个源，疑似需代理 %d 个。"
                            % (via, len(rows), px))
 
             self._run_tool("net", targets, job, None, done, fmt="0 / %d")
@@ -6272,7 +6273,7 @@ def run_gui():
         # ---- 直播表转换页 ----
         def _build_plist(self, page):
             v = QVBoxLayout(page)
-            info = QLabel("在 TXT（TVBox 频道表）与 M3U 之间互转。点「选择文件」后自动识别 "
+            info = QLabel("在 TXT（通用频道表）与 M3U 之间互转。点「选择文件」后自动识别 "
                           "源格式并输出到同目录（.m3u ↔ .txt）。")
             info.setWordWrap(True)
             v.addWidget(info)

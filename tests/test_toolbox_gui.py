@@ -117,7 +117,7 @@ ok("切到报告页：报告可见、分类隐藏",
 tb._switch_page(0)
 app.processEvents()
 
-print("== 2) 分类识别（用外置敏感词库）==")
+print("== 2) 分类识别（用外置分类词库）==")
 ok("分类页有进度条", "cat" in tb._page_bars)
 tb._run_cat()
 ok("检测中「开始」按钮全部禁用",

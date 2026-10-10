@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""type 字段修复回归测试（影视仓 / TVBox 接口类型规则）。
+"""type 字段修复回归测试（宿主程序 / 宿主程序 接口类型规则）。
 
-影视仓/TVBox 的 sites[].type 是「接口类型」数字：
+宿主程序/宿主程序 的 sites[].type 是「接口类型」数字：
     0 = XML（极少用）
     1 = JSON 直连（CMS 类，如 api.php/provide/vod、普通 http(s) 接口）
     3 = Spider（jar / js / py / csp_* 全部归这一类；具体引擎由

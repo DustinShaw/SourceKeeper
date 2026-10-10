@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""「源管家」全源管理器（py + 直连 CMS 等）回归测试（真实 PySide6 offscreen，纯逻辑零网络）。
+"""「源管家」站点管理器（py + 直连接口等）回归测试（真实 PySide6 offscreen，纯逻辑零网络）。
 
 覆盖 v2026.09.28 起的新能力：
   A) 数据层（pyinj_core，零 Qt）：

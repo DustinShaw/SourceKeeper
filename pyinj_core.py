@@ -149,7 +149,7 @@ def find_sites_close(text):
 
 def _fmt_type_value(v):
     """type 输出为 JSON 字面量：字符串原样带引号，数字正常输出。
-    影视仓变体可能用字符串 spider 类型（如 "py"），不能强转 int。"""
+    宿主程序变体可能用字符串 spider 类型（如 "py"），不能强转 int。"""
     if isinstance(v, str):
         return json.dumps(v, ensure_ascii=False)
     try:
@@ -796,7 +796,7 @@ def site_fingerprint(obj):
     """返回条目「功能身份」签名（用于判重）。**不含 key**。
 
     ⚠️ 判重要点（2026-09-29 二次修正）：
-      · **不能用 api 单独判重**。TVBox/影视仓里有一类 jar 型 spider 源，
+      · **不能用 api 单独判重**。宿主程序里有一类 jar 型 spider 源，
         `api` 是 jar 内部的**类名**（如 `csp_PanWebShare`），同一个 jar 里的同一个
         类会被**许多条不同的站点**复用——它们靠 `ext`（往往是 `ext.site`=上游站点
         地址）区分。在 `lubin.php` 这种「多仓聚合 jar」里尤其典型：一个
@@ -926,7 +926,7 @@ def deduplicate_sites(text):
 # ----------------------------------------------------------------------------
 # 成人内容自动检测（读取 .py 内容 / 站点名，判定是否涉及 NSFW，用于分级管理）
 # ----------------------------------------------------------------------------
-# 关键词经过实测调优：剔除在影视仓仓库里产生误报的泛义词
+# 关键词经过实测调优：剔除在宿主程序仓库里产生误报的泛义词
 #   - 情色：豆瓣等影视站只是把「情色」当作电影分类标签（武侠/西部/灾难/情色）
 #   - 福利：短剧站里是「免费/会员福利」之意，并非成人
 #   - 骚：uaa有声「激情骚麦」是 ASMR 音频分类，非成人
@@ -1050,7 +1050,7 @@ def detect_adult(py_path, site_name="", extra_text=""):
 
 # ----------------------------------------------------------------------------
 # 短剧源检测（与成人检测同框架：读 .py 内容 + 站点名，关键词判定）
-# 「短剧」一词在影视仓仓库里非常特异（短剧站点的名称、分类、接口注释里必有），
+# 「短剧」一词在宿主程序仓库里非常特异（短剧站点的名称、分类、接口注释里必有），
 # 误报风险极低；「微短剧/短剧场」只是其叠加词，列出仅为日志可读性。
 # ----------------------------------------------------------------------------
 _DUANJU_ZH = ("短剧", "微短剧", "短剧场")
@@ -1082,7 +1082,7 @@ def detect_duanju(py_path, site_name="", extra_text=""):
 # 自 2026-09 新增：龙哥明确「讨厌直播」，要求把含直播的 py 源挑出来一键禁用。
 # 关键词特意排除裸 "live"（英文里 live data / live preview / deliver / alive 等
 # 大量出现会严重误报），改用 livetv / iptv / live stream / streaming 等特异词；
-# 中文以「直播」为主，叠加「秀场 / 直播间 / 主播」提高召回（这些词在影视仓生态里
+# 中文以「直播」为主，叠加「秀场 / 直播间 / 主播」提高召回（这些词在宿主程序生态里
 # 几乎专指直播）。如需要更激进（连裸 live 也算），可在 _LIVE_EN 里加回 "live"。
 # ----------------------------------------------------------------------------
 _LIVE_ZH = ("直播", "秀场", "直播间", "主播")
@@ -1109,7 +1109,7 @@ def detect_live(py_path, site_name="", extra_text=""):
     return False, None
 
 
-# 深度检测用的移动端 UA（部分采集站接口对桌面 UA 返回空/403，影视仓自身即移动端）
+# 深度检测用的移动端 UA（部分采集站接口对桌面 UA 返回空/403，宿主程序自身即移动端）
 _DEEP_UA = ("Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
 
@@ -1304,7 +1304,7 @@ def collect_orphan_py(base_dir, removed_keys, key_api, remaining, alt_dir=None, 
 # ----------------------------------------------------------------------------
 # URL 提取：从 spider .py 文本里抓出所有 http(s) 源地址；
 # 可达性：多种方法（TCP 连接 + HTTP GET），任一方法成功即判为有效；
-# 禁用：把对应站点条目用 /* [disabled] ... */ 注释块包起来（TVBox 等解析器会忽略），
+# 禁用：把对应站点条目用 /* [disabled] ... */ 注释块包起来（宿主程序 等解析器会忽略），
 #       需要时在列表里增加「禁用」列供管理，并可一键启用还原。
 _URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
 _DISABLE_MARK = "[disabled]"
@@ -1659,7 +1659,7 @@ def parse_disabled_keys(text):
 
 
 def disable_site(text, key):
-    """禁用指定 key 的站点（注释掉对应配置，TVBox 等将忽略）。
+    """禁用指定 key 的站点（注释掉对应配置，宿主程序 等将忽略）。
     返回 (新文本, 是否找到)。保留其它条目与配置不变。"""
     return _apply_site_kind(text, key, True)
 
@@ -1674,7 +1674,7 @@ def enable_site(text, key):
 # ----------------------------------------------------------------------------
 # 设计要点：
 #   · 一切往来都以「站点条目列表」为准，不直接信任对方 JSON 的字段完整性 ——
-#     先用 normalize_site() 归一到统一 7 字段，缺项补 TVBox 惯例默认值；
+#     先用 normalize_site() 归一到统一 7 字段，缺项补 宿主程序 惯例默认值；
 #   · 合并到当前配置时走「先删后插」的手术式改写，保留原配置的注解与其余条目；
 #   · 导出时用 _rebuild_sites_body() 重建 sites 数组体，其余字段原样保留。
 _SITE_BOOL_TRUE = ("1", "true", "yes", "on")
@@ -1685,7 +1685,7 @@ _HTTP_UA = "SourceKeeper/1.0 (YuanGuanJia)"
 
 
 def infer_type(api, default=3):
-    """影视仓 / TVBox 的 sites[].type 是「接口类型」数字：
+    """宿主程序 / 宿主程序 的 sites[].type 是「接口类型」数字：
         0 = XML（极少用）
         1 = JSON 直连（CMS 类，如 api.php/provide/vod、普通 http(s) 接口）
         3 = Spider（jar / js / py / csp_* 全部归这一类；具体引擎由
@@ -1705,7 +1705,7 @@ def infer_type(api, default=3):
 
 def source_type_of(entry):
     """返回一条站点条目的「有效 type」（用于 GUI/CLI 分流，权威口径）：
-    - 条目自带有效 type → 用它（兼容字符串 "py" 等影视仓变体仍返回原值）
+    - 条目自带有效 type → 用它（兼容字符串 "py" 等宿主程序变体仍返回原值）
     - 否则按 api 用 infer_type 推断
     返回 int（0/1/3/4）或字符串（变体 type）；无法判断时返回 3。"""
     t = _norm_type(entry.get("type"))
@@ -1813,7 +1813,7 @@ def _norm_type(v, default=3):
     """把任意 type 值归一成「合法 type」：
     - None / 空 / 布尔 → None（让调用方回落 infer_type）
     - 数字 / 数字字符串 → int
-    - 其它字符串（影视仓变体可能用 "py" / "json" 这类 spider 类型）→ 原样保留"""
+    - 其它字符串（宿主程序变体可能用 "py" / "json" 这类 spider 类型）→ 原样保留"""
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
@@ -1830,7 +1830,7 @@ def _norm_type(v, default=3):
 def normalize_site(obj):
     """把任意来源的站点 dict 归一为统一字段结构（缺项补默认）。
     返回 dict：key / name / api / type / filterable / quickSearch / searchable。
-    非预期类型（None、字符串 "true" 等）按 TVBox 惯例折叠为 bool/int。"""
+    非预期类型（None、字符串 "true" 等）按行业惯例折叠为 bool/int。"""
 
     def _b(v, default=True):
         if v is None:
@@ -1881,7 +1881,7 @@ def normalize_site_full(obj):
 
     仅对 7 个核心字段做类型归正（复用 normalize_site），其余字段
     （ext/jar/adult/changeable/categories/hide/playUrl/style/playerType/genre/indexs…）
-    **原样保留**——TVBox/影视仓 配置里这些字段承载关键信息（如 jar 型多站点的
+    **原样保留**——宿主程序/宿主程序 配置里这些字段承载关键信息（如 jar 型多站点的
     ext.site 上游地址、adult 成人标记），丢了源就废了。
 
     注意：normalize_site 仍保留给只需核心字段的场景（其余测试/调用方白名单读取）。"""
@@ -2421,7 +2421,7 @@ def _local_deep_refs(text, base_rel, exists_fn=None):
 
 # ---------------------------------------------------------------------------
 # 条目 ext 字段里的「本地脚本路径」引用识别
-# ext 形态很杂：JSON 字符串（TVBox 常见）/"k=v" 串/"a.js|b.js" 串/dict/list/裸串。
+# ext 形态很杂：JSON 字符串（宿主程序 常见）/"k=v" 串/"a.js|b.js" 串/dict/list/裸串。
 # 取法：递归取所有字符串 → 按 | 换行 = 切 token → 用与「文件内引用」**同一套白名单
 # 口径**判定（同 _COMPANION_EXTS、跳过 http(s):// 与绝对路径），于是
 #   {"site": "./py/lib/x.js"} → 搬运；{"site": "https://a/x.js"} → 不动。
@@ -3397,13 +3397,13 @@ def split_by_adult(raw, sites, adult_keys=None, base_keys=None):
 # ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
-# 源测活：模拟影视仓加载 py 源（homeContent 分类栏 → 首页影片），判定死源
+# 源测活：模拟宿主程序加载 py 源（homeContent 分类栏 → 首页影片），判定死源
 # ----------------------------------------------------------------------------
 
 PROBE_WORKER_FLAG = "--pyinj-probe-worker"   # frozen exe 内部子进程入口
 PROBE_TIMEOUT_DEFAULT = 30                   # 单个源的硬超时（秒）
 PROBE_MARKER = "@@PYINJ_PROBE@@"             # 子进程输出中 JSON 的定位标记
-# 兜底 UA：影视仓/TVBox 用的是移动端 UA；urllib 默认 Python-urllib/3.x、
+# 兜底 UA：宿主程序/宿主程序 用的是移动端 UA；urllib 默认 Python-urllib/3.x、
 # requests 默认 python-requests/2.x 常被站点直接拒绝，会被误判成死源。
 # 源自己显式设置的 UA 优先级更高，兜底不会覆盖它。
 PROBE_UA = ("Mozilla/5.0 (Linux; Android 11; SM-G975F Build/RP1A.200720.012; wv) "
@@ -3412,7 +3412,7 @@ PROBE_UA = ("Mozilla/5.0 (Linux; Android 11; SM-G975F Build/RP1A.200720.012; wv)
 
 _PROBE_WORKER_CODE = r'''
 # -*- coding: utf-8 -*-
-"""源测活 worker：在独立子进程里，按影视仓的方式加载一个 py 源。
+"""源测活 worker：在独立子进程里，按宿主程序的方式加载一个 py 源。
 用法: python <file> <py_path> <timeout>       （frozen: exe --pyinj-probe-worker <py_path> <timeout>）
 输出: 标记行 + 单行 JSON。任何异常都转成 JSON，绝不以非零退出崩掉父进程。"""
 import io, json, os, sys, time, socket, threading, urllib.request
@@ -3451,7 +3451,7 @@ def _install_net_defaults(budget=30):
        ① PYINJ_PROBE_PROXY_SPEC 有值（用户配了自定义代理）→ **走它**（worker 自身与
           子进程内 py 源都走；env 里的 HTTP_PROXY 等已由父进程注入好）；
        ② PYINJ_PROBE_PROXY 为真 → 跟随系统代理环境变量；
-       ③ 都没有 → 默认**不走系统代理** —— 影视仓/TVBox 运行在电视/手机上，不读
+       ③ 都没有 → 默认**不走系统代理** —— 宿主程序/宿主程序 运行在电视/手机上，不读
           Windows 的代理环境变量，走代理会与之行为不一致（且代理隧道常卡在 TLS 握手）。
     2) 给所有 socket 兜底超时 —— 源不带 timeout 时不会无限等待。"""
     global NET_SOCK_TIMEOUT
@@ -3533,10 +3533,10 @@ def _install_ua_defaults():
 
 
 def _stub_base():
-    """部分源码 `from base.spider import Spider`（影视仓/饭太硬 py 运行时提供），
+    """部分源码 `from base.spider import Spider`（宿主程序/饭太硬 py 运行时提供），
     且大量源会调基类的 self.fetch(...) / self.post(...)。
     这里给一个**能跑的最小实现**（走 requests，UA 兜底已全局生效），
-    与影视仓 PyLoader 的行为对齐——否则会因缺基类方法误判成死源。"""
+    与宿主程序 PyLoader 的行为对齐——否则会因缺基类方法误判成死源。"""
     try:
         import types
         base = types.ModuleType("base")
@@ -3581,7 +3581,7 @@ class _Mod(object):
 
 
 def _ext_obj():
-    """站点 ext 配置（影视仓会把它传给 init(extend)），例如 csp_ 类源的配置项。"""
+    """站点 ext 配置（宿主程序会把它传给 init(extend)），例如 csp_ 类源的配置项。"""
     if not EXT_RAW:
         return ""
     try:
@@ -3647,7 +3647,7 @@ def _as_dict(v):
 
 
 def _classes_of(data):
-    """分类栏：影视仓红框那一排标签就是它渲染出来的。"""
+    """分类栏：宿主程序红框那一排标签就是它渲染出来的。"""
     arr = data.get("class") or data.get("classes") or []
     if not isinstance(arr, list):
         return []
@@ -3663,7 +3663,7 @@ def _classes_of(data):
 
 
 def _videos(obj, classes):
-    """首页影片：影视仓主页走 homeVideoContent；拿不到再退到第一个分类的第一页。"""
+    """首页影片：宿主程序主页走 homeVideoContent；拿不到再退到第一个分类的第一页。"""
     try:
         r = _as_dict(_try_call(obj, "homeVideoContent", [()]))
         if isinstance(r, dict):
@@ -3720,7 +3720,7 @@ def main():
         obj, style = loaded
         out["style"] = style
 
-        # ---- 阶段 1：分类栏（影视仓红框那一排；它出来才算活源）----
+        # ---- 阶段 1：分类栏（宿主程序红框那一排；它出来才算活源）----
         # 用主预算的**剩余**时间，加载慢的源仍有足够时间取分类
         home_budget = max(5, int(main_budget - (time.time() - t_mark)))
         data, err = _with_budget(
@@ -3735,7 +3735,7 @@ def main():
         raw = [c for c in (data.get("class") or data.get("classes") or [])
                if isinstance(c, dict)]
         out["classes"] = _classes_of(data)[:80]
-        # 判别口径：分类栏出得来（影视仓红框区有内容）才算活源
+        # 判别口径：分类栏出得来（宿主程序红框区有内容）才算活源
         out["alive"] = bool(out["classes"])
         out["ok"] = True
 
@@ -3782,7 +3782,7 @@ def _extract_classes(obj):
     """从直连 CMS 的 JSON 响应里抽取分类栏（与 _classes_of 口径一致，
     但额外覆盖 videoClass / types / ac=class 形态）。
 
-    影视仓红框区那一排分类标签 = homeContent 返回的 class 列表；
+    宿主程序红框区那一排分类标签 = homeContent 返回的 class 列表；
     分类非空即活源。返回分类名列表。"""
     if not isinstance(obj, dict):
         return []
@@ -3849,7 +3849,7 @@ def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=Fals
                      proxy=None):
     """直连 CMS（type:1）测活：HTTP 取分类列表判活。
 
-    影视仓顶部那一排分类标签 = 源 homeContent（苹果CMS 即 `ac=list` /
+    宿主程序顶部那一排分类标签 = 源 homeContent（苹果CMS 即 `ac=list` /
     `ac=class`）返回的 class 列表；**分类非空 = 活源**，空分类 = 死源，
     报错/超时 = 异常，找不到可访问接口 = 无资源。
 
@@ -3869,7 +3869,7 @@ def probe_cms_source(api, timeout=PROBE_TIMEOUT_DEFAULT, ua=None, use_proxy=Fals
                "Accept": "application/json, */*",
                "Connection": "close"}
     # 代理策略：① 配置了自定义代理 → 经代理；② use_proxy=True → 跟随系统代理环境变量；
-    # ③ 都没配 → 显式直连（影视仓/TVBox 跑在电视/手机上不读 Windows 代理，
+    # ③ 都没配 → 显式直连（宿主程序/宿主程序 跑在电视/手机上不读 Windows 代理，
     #    走代理 tunnel 常卡 TLS 握手被误判死源）。
     handlers = []
     _px = _proxy_mod.resolve(proxy)
@@ -4084,12 +4084,12 @@ def _note_socks_caveat(res, warn):
 
 def probe_py_source(py_path, timeout=PROBE_TIMEOUT_DEFAULT, ext=None, ua=None,
                     use_proxy=False, proxy=None):
-    """模拟影视仓加载 py 源：homeContent 取分类栏 → 首页影片，据此判定死源/活源。
+    """模拟宿主程序加载 py 源：homeContent 取分类栏 → 首页影片，据此判定死源/活源。
 
     在**子进程**中执行（隔离 + 硬超时）：卡死、死循环、阻塞网络请求的源
     会被超时杀掉，不会拖住本工具本身。
-    ext：该站点在配置里的 ext 字段（影视仓会传给源的 init），例如 csp_ 源的配置。
-    use_proxy：是否跟随系统代理。默认 False —— 影视仓/TVBox 跑在电视/手机上，
+    ext：该站点在配置里的 ext 字段（宿主程序会传给源的 init），例如 csp_ 源的配置。
+    use_proxy：是否跟随系统代理。默认 False —— 宿主程序/宿主程序 跑在电视/手机上，
       不读 Windows 代理环境变量；走代理常卡在 TLS 握手，会被误判成死源。
     proxy：自定义代理串（优先于 use_proxy）。配置后**子进程内 py 源自身的
       requests/urllib 也会经该代理**（通过注入 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY）。
