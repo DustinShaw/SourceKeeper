@@ -53,8 +53,8 @@
 
 | 文件 | 适用系统 |
 | --- | --- |
-| `源管家 v2610102045.exe` | Windows 10+（Qt6） |
-| `源管家 v2610102045-Win7.exe` | Windows 7（Qt5） |
+| `源管家 v1.0.0.exe` | Windows 10+（Qt6） |
+| `源管家 v1.0.0-Win7.exe` | Windows 7（Qt5） |
 
 ## 🚀 快速开始
 

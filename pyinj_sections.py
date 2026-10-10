@@ -17,6 +17,7 @@ import re
 # 复用 pyinj_core 的底层原语（不改动它们，只调用）
 from pyinj_core import (
     parse_jsonc, parse_site_spans, _STR_FIELDS, fmt_entry,
+    _extract_first_object, _extract_first_object_span, _DISABLE_MARK,
 )
 
 
@@ -170,13 +171,26 @@ def _fmt_generic_entry(e, indent="    "):
     return "\n".join(out)
 
 
+def _canonical(e):
+    """条目的规范 JSON 文本（键排序、无空格），用于身份回退比较。"""
+    try:
+        return json.dumps(e, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        return str(e)
+
+
 def _entry_identity(e):
-    """条目的稳定身份：优先 key，其次 name+url，其次 name。用于定位/替换。"""
+    """条目的稳定身份：优先 key，其次 name+url，再次 name，最后规范 JSON。
+    用于定位/替换/删除。最后一档是给 rules / ijk / flags 这类
+    **没有 key、name、url 的分区**用的——否则所有条目会塌缩成同一个身份，
+    导致「删了第一条却删到别的条目」这类事故。"""
     if e.get("key"):
         return ("key", str(e["key"]))
     if e.get("url") is not None:
         return ("name+url", "%s|%s" % (e.get("name", ""), e.get("url", "")))
-    return ("name", str(e.get("name", "")))
+    if e.get("name") is not None:
+        return ("name", str(e.get("name", "")))
+    return ("json", _canonical(e))
 
 
 def _same_entry(a, b):
@@ -321,17 +335,238 @@ def reorder_section(text, name, ordered_entries):
 
 def move_section_entry(text, name, entry, offset):
     """把某条目在数组内上移/下移 offset 位（GUI 拖拽/上下移按钮）。返回新文本。
-    offset<0 上移，>0 下移；越界则原样返回。"""
-    ents = section_entries(text, name)
-    idx = None
-    for i, e in enumerate(ents):
-        if _same_entry(e, entry):
-            idx = i
+    offset<0 上移，>0 下移；越界则原样返回。
+
+    实现走「片段级重建」：只在**启用中的条目**之间换位，
+    被注释禁用的条目与数组内注释**原样留在原位**（不会像 reorder_section 那样被挪走）。"""
+    pieces = scan_array_pieces(text, name)
+    act = [i for i, p in enumerate(pieces) if p["kind"] == "active"]
+    pos = None
+    for n, i in enumerate(act):
+        if _same_entry(pieces[i]["obj"], entry):
+            pos = n
             break
-    if idx is None:
+    if pos is None:
         return text
-    new_idx = idx + offset
-    if new_idx < 0 or new_idx >= len(ents):
+    tgt = pos + offset
+    if tgt < 0 or tgt >= len(act):
         return text
-    ents[idx], ents[new_idx] = ents[new_idx], ents[idx]
-    return reorder_section(text, name, ents)
+    i, j = act[pos], act[tgt]
+    for k in ("obj", "obj_text"):
+        pieces[i][k], pieces[j][k] = pieces[j][k], pieces[i][k]
+    return replace_array_body(text, name, pieces)
+
+
+# ============================================================================
+# 片段级扫描 / 重建（支持注释式「禁用」，并保留数组内注释位置）
+# ----------------------------------------------------------------------------
+# 设计要点：一个数组体被切成有序「片段」列表 ——
+#   active   : 正常条目        {…}
+#   disabled : 注释禁用的条目   /* [disabled] {…} */
+#   extra    : 其余注释（行注释 / 块注释），原样保留在各自位置
+# 条目原文统一存在 obj_text（不含缩进前缀）；渲染时按 kind 决定是否包注释，
+# 于是「禁用 ↔ 启用」只是改 kind，永远不会出现「启用了但还是一段注释」的脏数据。
+# ============================================================================
+def scan_array_pieces(text, name):
+    """扫描顶层数组体，按**原始出现顺序**返回片段列表，每项为 dict：
+        {"kind": "active"/"disabled"/"extra", "pos": int,
+         "obj": dict|None, "obj_text": str|None, "raw": str|None}
+    raw 仅 extra 片段使用。"""
+    try:
+        start, close = find_array_close(text, name)
+    except Exception:
+        return []
+    pieces = []
+    i, n = start, close
+    while i < n:
+        ch = text[i]
+        if ch in " \t\r\n,":
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            j = i + 2
+            while j + 1 < n and not (text[j] == "*" and text[j + 1] == "/"):
+                j += 1
+            j = min(j + 2, n)
+            block = text[i:j]
+            if _DISABLE_MARK in block[:60]:
+                obj = _extract_first_object(block)
+                obj_text = _extract_first_object_span(block)
+                if obj is not None and obj_text is not None:
+                    pieces.append({"kind": "disabled", "pos": i, "obj": obj,
+                                   "obj_text": obj_text, "raw": None})
+                    i = j
+                    continue
+            pieces.append({"kind": "extra", "pos": i, "obj": None,
+                           "obj_text": None, "raw": block})
+            i = j
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            j = i
+            while j < n and text[j] != "\n":
+                j += 1
+            pieces.append({"kind": "extra", "pos": i, "obj": None,
+                           "obj_text": None, "raw": text[i:j]})
+            i = j + 1
+            continue
+        if ch == "{":
+            k = i + 1
+            depth = 1
+            while k < n:
+                c2 = text[k]
+                if c2 == "/" and k + 1 < n and text[k + 1] == "/":
+                    while k < n and text[k] != "\n":
+                        k += 1
+                    continue
+                if c2 == '"':
+                    m = k + 1
+                    while m < n:
+                        if text[m] == "\\":
+                            m += 2
+                            continue
+                        if text[m] == '"':
+                            break
+                        m += 1
+                    k = m + 1
+                    continue
+                if c2 == "{":
+                    depth += 1
+                elif c2 == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                k += 1
+            seg = text[i:k + 1]
+            try:
+                obj = parse_jsonc(seg)
+            except Exception:
+                pieces.append({"kind": "extra", "pos": i, "obj": None,
+                               "obj_text": None, "raw": seg})
+                i = k + 1
+                continue
+            pieces.append({"kind": "active", "pos": i, "obj": obj,
+                           "obj_text": seg, "raw": None})
+            i = k + 1
+            continue
+        i += 1
+    return pieces
+
+
+def piece_text(p):
+    """片段渲染成文本：active 直接给对象原文；disabled 包上 /* [disabled] */ 注释。"""
+    if p["kind"] == "active":
+        return (p.get("obj_text") or "").strip()
+    if p["kind"] == "disabled":
+        return "/* " + _DISABLE_MARK + "\n" + (p.get("obj_text") or "").rstrip("\n") + "\n*/"
+    return (p.get("raw") or "").strip()
+
+
+def _pieces_body(pieces, trailing_comma):
+    """把片段列表渲染成数组体文本（不含外层 `[` `]`）。
+    逗号只加在**相邻的启用条目之间**（加在前一个条目的行尾）——
+    这样即使中间夹着 `//` 行注释，也不会出现「逗号被注释吃掉」或悬空逗号。"""
+    act = [i for i, p in enumerate(pieces) if p["kind"] == "active"]
+    need_comma = set(act[:-1])
+    if trailing_comma and act:
+        need_comma.add(act[-1])
+    out = []
+    for idx, p in enumerate(pieces):
+        txt = piece_text(p)
+        if not txt:
+            continue
+        line = "\n    " + txt
+        if idx in need_comma:
+            line += ","
+        out.append(line)
+    return "".join(out) + "\n  "
+
+
+def replace_array_body(text, name, pieces):
+    """用片段列表整体重写数组体（保留数组外的其它配置与注释）。返回新文本。"""
+    start, close = find_array_close(text, name)
+    trailing = text[start:close].rstrip().endswith(",")
+    return text[:start] + _pieces_body(pieces, trailing) + text[close:]
+
+
+def parse_section_tokens(text, name):
+    """按顺序返回 [{"kind": "active"/"disabled", "obj": {...}, "text": 渲染文本}]。"""
+    return [{"kind": p["kind"], "obj": p["obj"], "text": piece_text(p)}
+            for p in scan_array_pieces(text, name) if p["kind"] in ("active", "disabled")]
+
+
+def section_entries_with_disabled(text, name):
+    """返回 [(obj, disabled)]：active 条目 disabled=False，注释禁用的 disabled=True。
+    顺序即数组内原始顺序（与 GUI 列表一致）。"""
+    return [(p["obj"], p["kind"] == "disabled") for p in scan_array_pieces(text, name)
+            if p["kind"] in ("active", "disabled")]
+
+
+def set_section_enabled(text, name, entry, enabled):
+    """把某条目在 启用/禁用 之间切换（禁用 = 用 /* [disabled] … */ 注释掉，
+    宿主程序会忽略它；数据仍在文件里，随时可恢复）。返回 (新文本, 是否发生变化)。"""
+    pieces = scan_array_pieces(text, name)
+    want = "active" if enabled else "disabled"
+    changed = False
+    for p in pieces:
+        if p["kind"] not in ("active", "disabled"):
+            continue
+        if not _same_entry(p["obj"], entry):
+            continue
+        if p["kind"] != want:
+            p["kind"] = want
+            changed = True
+        break
+    if not changed:
+        return text, False
+    return replace_array_body(text, name, pieces), True
+
+
+def remove_section_entry(text, name, entry):
+    """删除一条条目（**含被注释禁用的**），返回 (新文本, 被删条目 或 None)。"""
+    pieces = scan_array_pieces(text, name)
+    hit = None
+    for i, p in enumerate(pieces):
+        if p["kind"] in ("active", "disabled") and _same_entry(p["obj"], entry):
+            hit = pieces.pop(i)["obj"]
+            break
+    if hit is None:
+        return text, None
+    return replace_array_body(text, name, pieces), hit
+
+
+def replace_section_entry(text, name, old_entry, new_entry):
+    """按身份定位并整体替换一条条目（含禁用的），保留其它片段与注释。
+    返回 (新文本, 是否找到)。"""
+    pieces = scan_array_pieces(text, name)
+    for p in pieces:
+        if p["kind"] in ("active", "disabled") and _same_entry(p["obj"], old_entry):
+            p["obj"] = dict(new_entry)
+            p["obj_text"] = _fmt_generic_entry(new_entry)
+            return replace_array_body(text, name, pieces), True
+    return text, False
+
+
+def section_summary(entry):
+    """给分区管理表格用的 (标题, 摘要)。纯展示，不改变数据。"""
+    title = ""
+    for k in ("name", "key", "host", "group", "title", "label"):
+        v = entry.get(k)
+        if isinstance(v, str) and v.strip():
+            title = v.strip()
+            break
+    if not title:
+        for _k, v in entry.items():
+            if isinstance(v, str) and v.strip():
+                title = v.strip()
+                break
+    sub = ""
+    for k in ("url", "api", "rule", "value", "options", "type", "ext"):
+        if k in entry:
+            v = entry[k]
+            sub = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+            break
+    if not sub:
+        sub = json.dumps(entry, ensure_ascii=False)
+    if len(sub) > 160:
+        sub = sub[:157] + "…"
+    return (title or "(无名称)"), sub

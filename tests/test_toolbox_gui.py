@@ -57,6 +57,14 @@ with open(os.path.join(py_dir, "adult_src.py"), "w", encoding="utf-8") as f:
     f.write("class Spider:\n    # 麻豆传媒 成人\n    api = '%s/api.php/provide/vod'\n" % BASE)
 
 RAW = """{
+"lives": [
+{"name":"直播A","type":0,"url":"http://a/tv.m3u"},
+// 直播注释
+{"name":"直播B","type":0,"url":"http://b/tv.txt"}
+],
+"rules": [
+{"host":"www.x.com","rule":["m3u8.php"]}
+],
 "sites": [
 {"key":"py_live","name":"Live┃PY","api":"./py/adult_src.py","type":3,"filterable":1,"quickSearch":1,"searchable":1},
 {"key":"csp_j","name":"Jar源","api":"csp_Jar","type":3,"jar":"%s/x.jar"},
@@ -215,6 +223,115 @@ ok("六页都有独立进度条",
    set(tb._page_bars.keys()) == {"cat", "jar", "speed", "net", "plist", "report"},
    str(sorted(tb._page_bars.keys())))
 
+print("== 9) 分区管理（lives / rules；本页是工具箱里唯一会写配置的一页）==")
+ok("分区页已建立", hasattr(tb, "sect_tabs"))
+ok("识别出 2 个分区（lives / rules）", tb.sect_tabs.count() == 2, str(tb.sect_tabs.count()))
+ok("lives 表 2 行", tb._sect_views["lives"]["table"].rowCount() == 2,
+   str(tb._sect_views["lives"]["table"].rowCount()))
+ok("rules 表 1 行", tb._sect_views["rules"]["table"].rowCount() == 1)
+
+
+def sect_pick(name, row):
+    t = tb._sect_views[name]["table"]
+    t.setCurrentCell(row, 0)
+    app.processEvents()
+    return tb._sect_cur(name)
+
+
+def cfg_now():
+    with open(os.path.join(tmp, "py.json"), encoding="utf-8") as f:
+        return f.read()
+
+
+def cfg_valid(txt):
+    try:
+        I.parse_config_text(txt)
+        return True
+    except Exception:
+        return False
+
+
+# 禁用第一条 → 注释式保留、JSONC 仍合法、总数不变
+e0 = sect_pick("lives", 0)
+ok("选中第一条（直播A）", e0 is not None and e0.get("name") == "直播A", str(e0))
+tb._sect_toggle("lives")
+txt = cfg_now()
+ok("禁用后写入 [disabled] 标记", "[disabled]" in txt)
+ok("禁用后配置仍是合法 JSONC", cfg_valid(txt), txt[:200])
+rows = tb._sect_rows["lives"]
+ok("禁用后条目总数不变（注释式保留）", len(rows) == 2, str(len(rows)))
+ok("第一条状态变为已禁用", rows[0][1] is True)
+ok("数组内注释未被吞掉", "// 直播注释" in txt)
+ok("备份目录已生成", os.path.isdir(os.path.join(tmp, "backups")))
+
+# 再启用 → 必须还原成正常对象，不能留下注释
+sect_pick("lives", 0)
+tb._sect_toggle("lives")
+txt = cfg_now()
+ok("启用后 [disabled] 消失", "[disabled]" not in txt, txt)
+ok("启用后 JSONC 合法", cfg_valid(txt))
+ok("启用后 active 恢复 2 条", len(tb._sect_rows["lives"]) == 2)
+ok("启用后仍是直播A", tb._sect_rows["lives"][0][0].get("name") == "直播A")
+
+# 上移 / 下移
+sect_pick("lives", 0)
+tb._sect_move("lives", +1)
+ok("下移后顺序 B,A",
+   [o.get("name") for o, _d in tb._sect_rows["lives"]] == ["直播B", "直播A"],
+   str([o.get("name") for o, _d in tb._sect_rows["lives"]]))
+sect_pick("lives", 1)
+tb._sect_move("lives", -1)
+ok("上移后顺序回到 A,B",
+   [o.get("name") for o, _d in tb._sect_rows["lives"]] == ["直播A", "直播B"])
+
+# 编辑（直接喂值给底层 API，避开对话框；对话框本身单独测）
+e0 = sect_pick("lives", 0)
+nt, found = I.pyinj_sections.replace_section_entry(
+    tb.sect_text, "lives", e0, {"name": "直播A改", "type": 0, "url": "http://a/new.m3u"})
+ok("编辑底层 API 命中", found is True)
+tb._sect_apply("lives", nt, "已更新")
+ok("编辑后名称生效", tb._sect_rows["lives"][0][0].get("name") == "直播A改")
+ok("编辑后 JSONC 合法", cfg_valid(cfg_now()))
+
+# 新增
+sect_pick("rules", 0)
+tb.sect_text = I.pyinj_sections.add_section_entry(
+    tb.sect_text, "rules", {"host": "www.z.com", "rule": [".mp4"]})
+tb._sect_refresh("rules")
+ok("新增后 rules 2 行", len(tb._sect_rows["rules"]) == 2, str(len(tb._sect_rows["rules"])))
+
+# 删除（把 dialogs 里的「确认」桩成 Yes）
+_orig_q = QMessageBox.question
+QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.Yes)
+try:
+    sect_pick("rules", 0)
+    tb._sect_delete("rules")
+finally:
+    QMessageBox.question = _orig_q
+ok("删除后 rules 1 行", len(tb._sect_rows["rules"]) == 1, str(len(tb._sect_rows["rules"])))
+ok("删除后 JSONC 合法", cfg_valid(cfg_now()))
+ok("主窗口 raw 已同步（避免之后保存覆盖本次改动）",
+   dlg.raw == cfg_now(), "")
+ok("改完后 lives / rules 都还在",
+   all(I.pyinj_sections.has_array(cfg_now(), n) for n in ("lives", "rules", "sites")))
+
+# 条目编辑对话框：非法 JSON 应被拒绝
+g2 = dict(I.__dict__)
+exec(src[:idx] + "    return _EntryEditDialog\n", g2)
+EntryEditDialog = g2["run_gui"]()
+d2 = EntryEditDialog(None, "{bad json")
+d2.ed.setPlainText("{ bad json ")
+d2._ok()
+ok("非法 JSON → 不进配置且给出提示", d2.value is None and d2.lbl.text().startswith("⚠"),
+   d2.lbl.text())
+d2.ed.setPlainText('["数组不是对象"]')
+d2._ok()
+ok("非对象 JSON 被拒绝", d2.value is None and "对象" in d2.lbl.text(), d2.lbl.text())
+d2.ed.setPlainText('{"name":"ok"}')
+d2._ok()
+ok("合法对象被接受", d2.value == {"name": "ok"}, str(d2.value))
+
+tb._switch_page(0)
 tb.close()
 dlg.close()
 srv.shutdown()

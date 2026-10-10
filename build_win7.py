@@ -9,7 +9,8 @@ PySide2/Qt5，所以**同一份源码**既能打 Win10+ 版也能打 Win7 版。
 
 流程（任一步失败立即中止）：
   1) 解释器体检：必须是 Python 3.9.x，且 PySide2 可导入
-  2) 版本核对：APP_VERSION 须为 YYMMDDHHMM（日期+时间），日期部分必须等于今天
+  2) 版本核对：APP_VERSION 推荐语义化三段式（如 1.0.0）；旧「日期+时间」YYMMDDHHMM 仍支持，
+     此时日期部分必须等于今天；其它非标准串（节日特别版）跳过核对
   3) 测试：纯逻辑 test_*.py（跳过硬依赖 PySide6 的 GUI 用例）+ test_win7_build.py（Qt5 GUI 冒烟）
   4) PyInstaller 打包：PyInjector-win7.spec -> dist/源管家Win7.exe
   5) 部署冒烟：deploy_win7.py（版本化命名 + 冻结 exe CLI 冒烟 + py.json md5 校验）
@@ -71,11 +72,14 @@ def main():
         sys.exit(1)
     ver = m.group(1)
     today6 = datetime.now().strftime("%y%m%d")
-    if ver.isdigit() and len(ver) == 10:
+    if re.fullmatch(r"\d+\.\d+\.\d+", ver):
+        # 语义化三段式版本（1.0.0 起）：无日期可核对，直接放行
+        print("✓ APP_VERSION=%s 为语义化三段式版本（major.minor.patch），无需日期核对" % ver)
+    elif ver.isdigit() and len(ver) == 10:
         if ver[:6] != today6:
             print("!! APP_VERSION=%s 须为 YYMMDDHHMM 格式且日期须为今天（%s）" % (ver, today6))
             sys.exit(1)
-        print("✓ APP_VERSION=%s 与今天 %s 一致" % (ver, today6))
+        print("✓ APP_VERSION=%s 与今天 %s 一致（旧「日期+时间」格式）" % (ver, today6))
     else:
         # 非标准版本号（节日特别版标记串，如「2026 国庆特别版」）：无日期可核对 → 跳过
         print("⚠️ APP_VERSION=%s 为非标准版本号（节日特别版），跳过日期核对" % ver)

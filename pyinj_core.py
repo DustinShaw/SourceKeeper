@@ -3033,7 +3033,7 @@ def _as_pairs(items):
 
 
 def apply_merge(raw, rows, src_repo_dir=None, target_repo_dir=None, src_remote_base=None,
-                file_plan=None, file_decisions=None):
+                file_plan=None, file_decisions=None, fill_missing_for_dup=True):
     """按每行 action 把合并计划写进配置文本（手术式改写，保留其余内容与注释）。
     rows: plan_merge 返回的 rows；GUI 可把每行的 action 从默认改成 add / overwrite / skip。
     src_repo_dir / target_repo_dir: 都给出时才搬运本地配套文件（源仓库 → 目标仓库）；
@@ -3046,6 +3046,10 @@ def apply_merge(raw, rows, src_repo_dir=None, target_repo_dir=None, src_remote_b
     否则会出现「文件改了名、配置仍指向旧名」的致命不一致。
     file_plan: plan_companion_files_local/remote 的产出（GUI 先规划、弹窗确认后传入；缺省则内部规划）；
     file_decisions: {rel: "rename"|"overwrite"|"skip"}（缺省一律 rename）。
+    fill_missing_for_dup: 「判重=重复(dup)」的行不写配置，但它对应的本地脚本若在**目标仓库里
+        根本不存在**，配置就会指向一个不存在的文件 → 源直接失效。开启时对这些行做
+        「只补缺失」：目标不存在 → 搬运；存在且内容相同 → 跳过；
+        存在但内容不同 → **不覆盖**，只在 file_stats["dup_outdated"] 里如实上报。
     返回 (新文本, stats, file_stats)。
     action：
       "add"       → 插入（conflict 行的 obj 已用 new_key 改名，避免撞 key）；
@@ -3113,16 +3117,58 @@ def apply_merge(raw, rows, src_repo_dir=None, target_repo_dir=None, src_remote_b
             text, _f = disable_site(text, key)
         except Exception:
             continue
+    # ---- 判重「重复」行的缺失配套补全（详见 fill_missing_for_dup 说明）----
+    # 这类行 action=skip、不写配置，但目标配置里**已有**同指纹的站点，
+    # 若目标仓库缺这个 .py，该源会直接失效（实测复现）→ 必须把文件补上。
+    # ⚠️ 只补「目标不存在」的；目标存在但内容不同 = 用户可能自己改过，
+    #    绝不自动覆盖/改名，只上报到 file_stats["dup_outdated"]。
+    fill_items, dup_outdated = [], []
+    if fill_missing_for_dup and target_repo_dir:
+        dup_objs = [row["obj"] for row in rows
+                    if row.get("action") == "skip" and row.get("verdict") == "dup"]
+        if dup_objs:
+            fplan = None
+            try:
+                if src_repo_dir:
+                    fplan = plan_companion_files_local(src_repo_dir, target_repo_dir, dup_objs)
+                elif src_remote_base:
+                    fplan = plan_companion_files_remote(src_remote_base, target_repo_dir, dup_objs)
+            except Exception:
+                fplan = None
+            if fplan:
+                for it in fplan.get("items", []):
+                    if it.get("missing"):
+                        continue
+                    if not it.get("exists"):
+                        fill_items.append(it)          # 目标缺失 → 补
+                    elif not it.get("same"):
+                        dup_outdated.append(it["rel"])  # 目标已有但不同 → 只上报
+                if fill_items:
+                    if plan is None:
+                        plan = {"items": [], "map": {}, "cache": {}, "conflicts": [],
+                                "same": [], "missing": [], "new": []}
+                    else:   # 浅拷贝，避免就地改到调用方（GUI）持有的 plan
+                        plan = dict(plan)
+                        plan["items"] = list(plan.get("items") or [])
+                        plan["cache"] = dict(plan.get("cache") or {})
+                    plan["items"].extend(fill_items)
+                    plan["cache"].update(fplan.get("cache") or {})
+
     # 配套文件搬运（含内容级冲突改名）
     file_stats = {"copied": [], "skipped": [], "missing_src": [],
-                  "renamed": [], "conflict_skipped": [], "backed_up": []}
+                  "renamed": [], "conflict_skipped": [], "backed_up": [],
+                  "filled_missing": [it["rel"] for it in fill_items],
+                  "dup_outdated": dup_outdated}
     if target_repo_dir and plan is not None:
         if src_repo_dir:
-            file_stats = copy_companions(src_repo_dir, target_repo_dir, copy_objs,
-                                         plan=plan, decisions=file_decisions)
+            file_stats.update(copy_companions(src_repo_dir, target_repo_dir, copy_objs,
+                                              plan=plan, decisions=file_decisions))
         elif src_remote_base:
-            file_stats = copy_companions_remote(src_remote_base, target_repo_dir, copy_objs,
-                                                plan=plan, decisions=file_decisions)
+            file_stats.update(copy_companions_remote(src_remote_base, target_repo_dir, copy_objs,
+                                                     plan=plan, decisions=file_decisions))
+        # copy_companions 不覆盖上面两个新键（用 update 而非整体赋值）——它们不属于它的产出
+        file_stats["filled_missing"] = [it["rel"] for it in fill_items]
+        file_stats["dup_outdated"] = dup_outdated
     # 来源是粘贴文本（两者皆 None）→ 不搬运，由用户手动处理配套文件
     disabled_set = set(disabled_keys)
     # 结果自检：配置仍可读回，且本次写入的条目、原有启用的条目一条都不能丢。

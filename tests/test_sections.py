@@ -100,5 +100,93 @@ print("== 6) 注释保留 ==")
 ok("排序后仍保留 //电视直播 注释", "//电视直播" in t5, "")
 ok("lives/parses/sites 三者并存", all(S.has_array(t5, n) for n in ("lives", "parses", "sites")))
 
+# ---------------------------------------------------------------------------
+# 7-11：分区管理页（工具箱）依赖的新能力 —— 注释式禁用 / 通用身份 / 片段重建
+# ---------------------------------------------------------------------------
+CFG2 = '''{
+  "lives": [
+    {
+      "name": "直播A",
+      "type": 0,
+      "url": "http://a/tv.m3u"
+    },
+    // 中间注释
+    {
+      "name": "直播B",
+      "type": 0,
+      "url": "http://b/tv.txt"
+    }
+  ],
+  "rules": [
+    {"host": "www.x.com", "rule": ["m3u8.php"]},
+    {"host": "www.y.com", "rule": [".m3u8"]}
+  ],
+  "sites": [
+    {"key": "k1", "name": "站点A", "api": "./py/a.py", "type": 3},
+    {"key": "k2", "name": "站点B", "api": "./py/b.py", "type": 3}
+  ]
+}
+'''
+
+print("== 7) 片段扫描（active / disabled / extra）==")
+pcs = S.scan_array_pieces(CFG2, "lives")
+ok("lives 切成 3 个片段（2 条目 + 1 注释）", len(pcs) == 3, [p["kind"] for p in pcs])
+ok("中间那条被识别为注释片段", pcs[1]["kind"] == "extra", pcs[1])
+
+print("== 8) 注释式禁用 / 启用（数据不丢，可还原）==")
+lv = S.section_entries(CFG2, "lives")
+td, changed = S.set_section_enabled(CFG2, "lives", lv[0], False)
+ok("禁用返回已变更", changed is True)
+ok("禁用后写入 [disabled] 标记", "[disabled]" in td)
+ok("禁用后仍是合法 JSONC", _valid(td), td[:200] if not _valid(td) else "")
+ok("禁用后条目总数不变（注释式保留）",
+   len(S.section_entries_with_disabled(td, "lives")) == 2)
+ok("禁用后首条标记为 disabled",
+   S.section_entries_with_disabled(td, "lives")[0][1] is True)
+ok("数组内的 // 注释未被吞掉", "// 中间注释" in td)
+ok("同一状态再次禁用 → 不产生变化", S.set_section_enabled(td, "lives", lv[0], False)[1] is False)
+
+te, changed2 = S.set_section_enabled(td, "lives", lv[0], True)
+ok("启用返回已变更", changed2 is True)
+ok("启用后 [disabled] 消失（不会留成注释）", "[disabled]" not in te, te)
+ok("启用后 active 恢复 2 条", len(S.section_entries(te, "lives")) == 2)
+ok("启用后 JSONC 合法", _valid(te))
+
+print("== 9) 通用身份：无 key/name/url 的分区（rules / ijk）==")
+rules = S.section_entries(CFG2, "rules")
+ok("rules 两条身份不同", S._entry_identity(rules[0]) != S._entry_identity(rules[1]),
+   [S._entry_identity(r) for r in rules])
+tr, rm = S.remove_section_entry(CFG2, "rules", rules[0])
+ok("删除 rules[0] 命中正确（未误伤第二条）",
+   rm is not None and rm.get("host") == "www.x.com", rm)
+ok("rules 只剩 y", [r["host"] for r in S.section_entries(tr, "rules")] == ["www.y.com"])
+ok("删除后 JSONC 合法", _valid(tr))
+
+print("== 10) 删除被禁用的条目 / 整体替换 ==")
+t1, _c = S.set_section_enabled(CFG2, "lives", lv[1], False)
+t2, rm2 = S.remove_section_entry(t1, "lives", lv[1])
+ok("能删掉「已禁用」的条目", rm2 is not None and rm2.get("name") == "直播B", rm2)
+ok("删后剩 1 条", len(S.section_entries_with_disabled(t2, "lives")) == 1)
+t3, f3 = S.replace_section_entry(CFG2, "lives", lv[0],
+                                 {"name": "直播A改", "type": 0, "url": "http://a/new.m3u"})
+ok("整体替换命中", f3 is True)
+ok("替换后新名生效", S.section_entries(t3, "lives")[0]["name"] == "直播A改")
+ok("替换后仍是合法 JSONC", _valid(t3))
+ok("替换不影响 rules", len(S.section_entries(t3, "rules")) == 2)
+
+print("== 11) 移动只换启用条目，禁用条目与注释留在原位 ==")
+tm = S.move_section_entry(CFG2, "lives", lv[0], +1)
+ok("下移后顺序 B,A", [e["name"] for e in S.section_entries(tm, "lives")] == ["直播B", "直播A"])
+ok("移动后注释仍在", "// 中间注释" in tm)
+ok("offset 越界原样返回", S.move_section_entry(CFG2, "lives", lv[0], -1) == CFG2)
+td2, _c2 = S.set_section_enabled(CFG2, "lives", lv[1], False)
+ok("禁用条目参与列表且保持原顺序",
+   [o["name"] for o, _d in S.section_entries_with_disabled(td2, "lives")] == ["直播A", "直播B"])
+
+print("== 12) 摘要（表格展示用）==")
+ok("有 name 取 name", S.section_summary({"name": "X", "url": "u"})[0] == "X")
+ok("无 name 取 host", S.section_summary({"host": "h", "rule": ["a"]})[0] == "h")
+ok("摘要超长会截断", len(S.section_summary({"name": "n", "url": "u" * 500})[1]) <= 161)
+
 print("\n结果：%d 通过, %d 失败" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)

@@ -34,7 +34,8 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "2610102045"   # YYMMDDHHMM（build 核对前 6 位=今天；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.0.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+                             # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
 APP_TITLE_SUFFIX = "%s v%s" % (APP_NAME, APP_VERSION)   # 窗体标题统一后缀（所有标题栏都标注版本）
@@ -1882,6 +1883,15 @@ def run_gui():
             msg = "已合并写入配置。\n备份：%s" % os.path.basename(bak)
             if fs.get("copied"):
                 msg += "\n\n已自动搬运 %d 个本地配套文件（.py/.js/.drpy/jar）。" % len(fs["copied"])
+            if fs.get("filled_missing"):
+                msg += ("\n已补齐 %d 个「重复条目」缺失的本地脚本 —— 配置里本就有该站点，"
+                        "但仓库缺对应文件（会导致该源直接失效），现已补上：\n  %s"
+                        % (len(fs["filled_missing"]), "、".join(fs["filled_missing"][:8])))
+            if fs.get("dup_outdated"):
+                msg += ("\n⚠️ %d 个本地脚本已存在、但**内容与来源不同**，未自动覆盖"
+                        "（避免盖掉你本地改过的版本）：\n  %s\n"
+                        "  → 若确实要用来源版本，把该行「操作」改为「覆盖」后重新合并。"
+                        % (len(fs["dup_outdated"]), "、".join(fs["dup_outdated"][:8])))
             if fs.get("renamed"):
                 msg += ("\n%d 个同名但内容不同的配套文件已**改名搬运**"
                         "（配置里的 api/jar 已同步改为新名）：\n  %s"
@@ -1896,6 +1906,10 @@ def run_gui():
                 msg += "\n%d 个被覆盖的目标文件已备份到 backups/companions/。" % len(fs["backed_up"])
             if fs.get("missing_src"):
                 msg += "\n⚠️ %d 个配套文件在来源仓库找不到，未搬运，需你手动处理。" % len(fs["missing_src"])
+                _sd = fs.get("src_repo_dir")
+                if _sd:
+                    msg += ("\n   查找位置：%s（按配置里 api/jar 的相对路径）。"
+                            "若你的 .py 不在该目录下，请先放到对应位置再重新合并。" % _sd)
             if fs.get("via_mirror"):
                 msg += ("\n🚀 %d 个文件直连失败、已经镜像加速获取（内容可能滞后于源站，"
                         "如异常请核对）：\n  %s"
@@ -5043,6 +5057,10 @@ def run_gui():
             except ValueError as ex:
                 QMessageBox.critical(self, "合并失败", str(ex))
                 return
+            # 记录来源目录：配套文件缺失时提示「去哪里找过」（见 App.merge_import）
+            if isinstance(file_stats, dict):
+                file_stats = dict(file_stats)
+                file_stats["src_repo_dir"] = self.src_repo_dir or self.src_remote_base or ""
             # ---- lives / parses：弹出明细清单让用户逐条勾选 ----
             sections = []
             if self.src_lives:
@@ -5864,12 +5882,56 @@ def run_gui():
                 return
             self.finished_report.emit(rep)
 
+    class _EntryEditDialog(QDialog):
+        """分区条目的通用 JSON 编辑器。
+
+        lives / parses / ads / rules / flags / ijk 的字段结构各不相同
+        （有 name+url 的、有 host+rule 的、有 group+options 嵌套的），
+        与其为每种分区写一套表单，不如直接编辑对象的 JSON —— 通用、且所见即所得。
+        确定前做严格解析校验，非法 JSON 不进配置。"""
+
+        def __init__(self, parent, initial="", title="编辑条目"):
+            super().__init__(parent)
+            self.setWindowTitle(tagged_title(title))
+            self.value = None
+            self.resize(520, 400)
+            v = QVBoxLayout(self)
+            tip = QLabel("编辑该条目的 JSON 对象（整体替换这一条，其余条目与注释不受影响）：")
+            tip.setWordWrap(True)
+            v.addWidget(tip)
+            self.ed = QPlainTextEdit()
+            self.ed.setPlainText(initial or "{\n  \n}")
+            v.addWidget(self.ed, 1)
+            self.lbl = QLabel("")
+            self.lbl.setWordWrap(True)
+            v.addWidget(self.lbl)
+            hb = QHBoxLayout()
+            hb.addStretch(1)
+            hb.addWidget(QPushButton("取消", clicked=self.reject))
+            hb.addWidget(QPushButton("确定", clicked=self._ok))
+            v.addLayout(hb)
+
+        def _ok(self):
+            txt = self.ed.toPlainText().strip() or "{}"
+            try:
+                obj = parse_jsonc(txt)
+            except Exception as ex:
+                self.lbl.setText("⚠ JSON 解析失败：%s" % ex)
+                return
+            if not isinstance(obj, dict):
+                self.lbl.setText("⚠ 必须是一段 JSON 对象（以 { 开头、以 } 结尾）。")
+                return
+            self.value = obj
+            self.accept()
+
     class _ToolboxDialog(QDialog):
         def __init__(self, parent, entries, base_dir, repo_dir):
             super().__init__(parent)
             self.entries = [dict(e) for e in (entries or [])]
             self.base_dir = base_dir
             self.repo_dir = repo_dir
+            # 配置文件：分区管理页要直接改配置文本，所以需要知道改哪个文件
+            self.cfg_file = getattr(parent, "cfg_file", None) or CONFIG_NAME
             self.title = "🧰 工具箱"
             self.setWindowTitle(tagged_title(self.title))
             self.resize(900, 600)
@@ -5879,11 +5941,14 @@ def run_gui():
             self._run_worker = None       # 当前正在跑的工具任务（通用 worker）
             self._page_bars = {}          # 页名 -> (进度条, 状态标签)，各页独立视觉反馈
             self._tool_buttons = []       # 各页「开始」按钮（检测中统一禁用）
+            self.sect_text = ""           # 分区管理：当前内存中的配置文本
+            self._sect_views = {}         # 分区名 -> {"table":…, "btns":[…]}
+            self._sect_rows = {}          # 分区名 -> [(obj, disabled), …]
 
             root = QVBoxLayout(self)
             tip = QLabel(
-                "把「分类识别 / JAR 体检 / 源测速 / 网络诊断 / 直播表转换 / 诊断报告」"
-                "集中在这里。全部为<b>只读检测</b>，不改动你的配置。")
+                "把「分类识别 / JAR 体检 / 源测速 / 网络诊断 / 直播表转换 / 诊断报告 / "
+                "分区管理」集中在这里。除「分区管理」外均为<b>只读检测</b>，不改动你的配置。")
             tip.setTextFormat(Qt.RichText)
             tip.setWordWrap(True)
             root.addWidget(tip)
@@ -5893,7 +5958,7 @@ def run_gui():
             self.page = QComboBox()
             self.page.addItems([
                 "分类识别", "JAR 体检", "源测速", "网络诊断",
-                "直播表转换（TXT ↔ M3U）", "诊断报告导出",
+                "直播表转换（TXT ↔ M3U）", "诊断报告导出", "分区管理",
             ])
             self.page.currentIndexChanged.connect(self._switch_page)
             top.addWidget(self.page, 1)
@@ -5901,7 +5966,7 @@ def run_gui():
 
             # 各功能页容器（QWidget + 显隐切换）
             self.pages = {}
-            for name in ("cat", "jar", "speed", "net", "plist", "report"):
+            for name in ("cat", "jar", "speed", "net", "plist", "report", "sect"):
                 w = QWidget()
                 self.pages[name] = w
                 root.addWidget(w, 1)
@@ -5911,6 +5976,7 @@ def run_gui():
             self._build_net(self.pages["net"])
             self._build_plist(self.pages["plist"])
             self._build_report(self.pages["report"])
+            self._build_sect(self.pages["sect"])
 
             self.lbl_status = QLabel("")
             self.lbl_status.setWordWrap(True)
@@ -6062,9 +6128,12 @@ def run_gui():
                     pass
 
         def _switch_page(self, idx):
-            names = ["cat", "jar", "speed", "net", "plist", "report"]
+            names = ["cat", "jar", "speed", "net", "plist", "report", "sect"]
             for i, n in enumerate(names):
                 self.pages[n].setVisible(i == idx)
+            if idx == len(names) - 1:
+                # 切到分区管理时重新读盘：期间主窗口可能已经改过配置
+                self._reload_sections()
 
         # ---- 分类识别页 ----
         def _build_cat(self, page):
@@ -6412,6 +6481,234 @@ def run_gui():
                 return
             self._status("报告已导出：%s（共 %d 个站点）" % (path, rep["total"]))
             QMessageBox.information(self, "完成", "诊断报告已导出：\n%s" % path)
+
+        # ---- 分区管理页：lives / parses / ads / rules / flags / ijk ----
+        # 说明：这是工具箱里**唯一会写配置**的一页（其余都是只读检测）。
+        # 每次写入前自动备份到配置目录的 backups/，写完立刻把新文本同步回主窗口，
+        # 避免主窗口还拿着旧 raw，之后一保存就把本次修改覆盖掉。
+        SECT_NAMES = [("lives", "电视直播"), ("parses", "解析接口"), ("ads", "广告规则"),
+                      ("rules", "播放规则"), ("flags", "标记位"), ("ijk", "播放器参数")]
+
+        def _build_sect(self, page):
+            v = QVBoxLayout(page)
+            info = QLabel(
+                "直接管理配置里的其它顶层数组（直播 / 解析 / 广告 / 播放规则 …）。"
+                "「🚫 禁用」= 用 <code>/* [disabled] */</code> 把该条注释掉——"
+                "宿主程序会忽略它，但数据仍留在文件里，随时可一键恢复。"
+                "每次写入前都会自动备份到配置目录下的 <code>backups/</code>。"
+                "（本页是工具箱里唯一会改动配置的一页）")
+            info.setTextFormat(Qt.RichText)
+            info.setWordWrap(True)
+            v.addWidget(info)
+            self.sect_tabs = QTabWidget()
+            v.addWidget(self.sect_tabs, 1)
+            self._reload_sections()
+
+        def _cfg_path(self):
+            cfg = self.cfg_file or CONFIG_NAME
+            return cfg if os.path.isabs(cfg) else os.path.join(self.repo_dir or ".", cfg)
+
+        def _reload_sections(self):
+            """重新从磁盘读配置文本，按实际存在的顶层数组重建分区 Tab。"""
+            if not hasattr(self, "sect_tabs"):
+                return
+            try:
+                with open(self._cfg_path(), encoding="utf-8", errors="replace") as f:
+                    self.sect_text = f.read()
+            except Exception:
+                self.sect_text = ""
+            self._sect_views = {}
+            self._sect_rows = {}
+            self.sect_tabs.clear()
+            found = 0
+            for name, label in self.SECT_NAMES:
+                if not pyinj_sections.has_array(self.sect_text, name):
+                    continue
+                found += 1
+                w = QWidget()
+                lv = QVBoxLayout(w)
+                bar = QHBoxLayout()
+                for text, slot in (("➕ 新增", lambda _c=False, n=name: self._sect_add(n)),
+                                   ("✏ 编辑", lambda _c=False, n=name: self._sect_edit(n)),
+                                   ("🗑 删除", lambda _c=False, n=name: self._sect_delete(n)),
+                                   ("↑ 上移", lambda _c=False, n=name: self._sect_move(n, -1)),
+                                   ("↓ 下移", lambda _c=False, n=name: self._sect_move(n, +1)),
+                                   ("🚫 禁用 / ✓ 启用",
+                                    lambda _c=False, n=name: self._sect_toggle(n)),
+                                   ("↻ 重新载入",
+                                    lambda _c=False: self._reload_sections())):
+                    b = QPushButton(text)
+                    b.clicked.connect(slot)
+                    bar.addWidget(b)
+                bar.addStretch(1)
+                lv.addLayout(bar)
+                t = QTableWidget(0, 3)
+                t.setHorizontalHeaderLabels(["状态", "名称 / 标识", "地址 / 摘要"])
+                t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+                t.setSelectionBehavior(QAbstractItemView.SelectRows)
+                t.setSelectionMode(QAbstractItemView.SingleSelection)
+                t.itemDoubleClicked.connect(
+                    lambda _it, n=name: self._sect_edit(n))
+                lv.addWidget(t, 1)
+                self.sect_tabs.addTab(w, "%s（%s）" % (label, name))
+                self._sect_views[name] = {"table": t}
+                self._sect_refresh(name)
+            if not found:
+                lbl = QLabel("当前配置里没有 <b>lives / parses / ads / rules / flags / ijk</b> "
+                             "这些顶层数组，暂无可管理的分区。\n"
+                             "（配置路径：%s）" % self._cfg_path())
+                lbl.setTextFormat(Qt.RichText)
+                lbl.setWordWrap(True)
+                self.sect_tabs.addTab(lbl, "无分区")
+
+        def _sect_refresh(self, name):
+            """按内存文本刷新某分区的表格。"""
+            view = self._sect_views.get(name)
+            if not view:
+                return
+            rows = pyinj_sections.section_entries_with_disabled(self.sect_text, name)
+            self._sect_rows[name] = rows
+            t = view["table"]
+            t.setRowCount(len(rows))
+            for r, (obj, dis) in enumerate(rows):
+                title, sub = pyinj_sections.section_summary(obj)
+                cells = ["🚫 已禁用" if dis else "✓ 启用", title, sub]
+                for c, val in enumerate(cells):
+                    it = QTableWidgetItem(str(val))
+                    if dis:
+                        it.setForeground(QColor("#8a9099"))
+                    t.setItem(r, c, it)
+            try:
+                t.resizeColumnsToContents()
+            except Exception:
+                pass
+
+        def _sect_cur(self, name):
+            """当前选中的条目 dict（未选中返回 None）。"""
+            view = self._sect_views.get(name)
+            rows = self._sect_rows.get(name) or []
+            if not view or not rows:
+                return None
+            r = view["table"].currentRow()
+            if r < 0 or r >= len(rows):
+                return None
+            return rows[r][0]
+
+        def _sect_pick(self, name):
+            e = self._sect_cur(name)
+            if e is None:
+                QMessageBox.information(self, "提示", "请先在表里点选一条（或双击直接编辑）。")
+            return e
+
+        def _sync_parent_cfg(self, new_text):
+            """把新配置文本同步回主窗口，防止它之后写盘时覆盖本次改动。"""
+            p = self.parent()
+            try:
+                if p is not None and hasattr(p, "raw"):
+                    p.raw = new_text
+            except Exception:
+                pass
+            fn = getattr(p, "load_repo", None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    pass
+
+        def _sect_apply(self, name, new_text, msg):
+            """写盘 + 备份 + 同步主窗口 + 刷新表格。返回是否发生了改动。"""
+            if new_text == self.sect_text:
+                return False
+            try:
+                bak = backup_and_write(self.repo_dir, new_text, self.cfg_file)
+            except Exception as ex:
+                QMessageBox.critical(self, "错误", "写入配置失败：%s" % ex)
+                return False
+            self.sect_text = new_text
+            self._sync_parent_cfg(new_text)
+            for n, _l in self.SECT_NAMES:
+                self._sect_refresh(n)
+            self._status("%s（已备份 %s）" % (msg, os.path.basename(bak)))
+            return True
+
+        def _sect_add(self, name):
+            d = _EntryEditDialog(self, "", title="新增条目 · %s" % name)
+            if d.exec() != QDialog.Accepted or d.value is None:
+                return
+            try:
+                new_text = pyinj_sections.add_section_entry(self.sect_text, name, d.value)
+            except Exception as ex:
+                QMessageBox.critical(self, "错误", "新增失败：%s" % ex)
+                return
+            self._sect_apply(name, new_text, "已向 %s 新增 1 条" % name)
+
+        def _sect_edit(self, name):
+            e = self._sect_pick(name)
+            if e is None:
+                return
+            d = _EntryEditDialog(self, json.dumps(e, ensure_ascii=False, indent=2),
+                                 title="编辑条目 · %s" % name)
+            if d.exec() != QDialog.Accepted or d.value is None:
+                return
+            try:
+                new_text, found = pyinj_sections.replace_section_entry(
+                    self.sect_text, name, e, d.value)
+            except Exception as ex:
+                QMessageBox.critical(self, "错误", "更新失败：%s" % ex)
+                return
+            if not found:
+                QMessageBox.information(self, "提示", "没找到该条目（配置可能已被外部改动），"
+                                                     "点「↻ 重新载入」后再试。")
+                return
+            self._sect_apply(name, new_text, "已更新 %s 中的 1 条" % name)
+
+        def _sect_delete(self, name):
+            e = self._sect_pick(name)
+            if e is None:
+                return
+            title, _sub = pyinj_sections.section_summary(e)
+            if QMessageBox.question(
+                    self, "确认删除",
+                    "确定从 %s 里删除这一条吗？\n\n%s\n\n"
+                    "（写入前会自动备份到 backups/，可随时从备份还原）" % (name, title),
+                    QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+                return
+            new_text, rm = pyinj_sections.remove_section_entry(self.sect_text, name, e)
+            if rm is None:
+                QMessageBox.information(self, "提示", "没找到该条目。")
+                return
+            self._sect_apply(name, new_text, "已从 %s 删除 1 条" % name)
+
+        def _sect_toggle(self, name):
+            e = self._sect_pick(name)
+            if e is None:
+                return
+            dis = False
+            for obj, d in (self._sect_rows.get(name) or []):
+                if obj is e:
+                    dis = d
+                    break
+            try:
+                new_text, changed = pyinj_sections.set_section_enabled(
+                    self.sect_text, name, e, bool(dis))
+            except Exception as ex:
+                QMessageBox.critical(self, "错误", "操作失败：%s" % ex)
+                return
+            if not changed:
+                self._sect_refresh(name)
+                return
+            self._sect_apply(name, new_text,
+                             "已%s %s 中的 1 条" % ("启用" if dis else "禁用", name))
+
+        def _sect_move(self, name, offset):
+            e = self._sect_pick(name)
+            if e is None:
+                return
+            new_text = pyinj_sections.move_section_entry(self.sect_text, name, e, offset)
+            if new_text == self.sect_text:
+                self._status("已经在%s了。" % ("最上面" if offset < 0 else "最下面"))
+                return
+            self._sect_apply(name, new_text, "已移动 %s 中的 1 条" % name)
 
         # ---- 通用填表 ----
         def _fill_table(self, table, rows):
