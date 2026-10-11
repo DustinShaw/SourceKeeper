@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "1.0.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.0.1"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
                              # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
@@ -3082,9 +3082,9 @@ def run_gui():
             except Exception:
                 pass
             self.empty_label.hide()
-            # 底部操作条：按钮多达 14 个，若挤在一行会把对话框最小宽度撑到上千像素
+            # 底部操作条：按钮多达 15 个，若挤在一行会把对话框最小宽度撑到上千像素
             # （导致表格上方出现大片空白、窗口被强行撑宽）。改为**两行分组网格**：
-            #   第 1 行：批量操作（删除/禁用/启用/禁用短剧/禁用直播）
+            #   第 1 行：批量操作（删除/禁用/启用/排序写回/禁用短剧/禁用直播/剔除失效）
             #   第 2 行：检测工具（源测活/网络体检/工具箱）+ 导出（导出干净/智能分流）
             #   右下角固定：保存并写入（主操作）+ 关闭
             # QGridLayout 不强制一行放完，按钮条的「最小宽度」回落到单行最宽分组，
@@ -3125,6 +3125,7 @@ def run_gui():
             tools = [("🩺 源测活", self.probe_config, None),
                      ("🌐 网络体检", self.scan_proxy_sites, None),
                      ("🧰 工具箱", self.open_toolbox, None),
+                     ("⇅ 排序写回配置", self.write_sorted_order, None),
                      ("📤 导出干净配置", self.export_config, None),
                      ("🔀 智能分流导出", self.split_export, None)]
             for i, (txt, fn, accent) in enumerate(tools):
@@ -3921,6 +3922,86 @@ def run_gui():
             self.log_msg("已禁用 %s（备份 %s）" % (", ".join(ok_keys), os.path.basename(bak)), "ok")
             self._toast("已禁用 %s" % (ok_keys[0] if len(ok_keys) == 1
                                       else "%d 个站点" % len(ok_keys)))
+
+        # ---- ⇅ 按当前排序写回配置 ----
+        def _confirm_sort_write(self, moved, hidden):
+            """确认「排序写回」弹窗（独立成方法，便于 offscreen 测试直接替换）。
+            返回是否继续写入。"""
+            msg = ("将按当前列表顺序重写配置文件里的 sites 数组。\n\n"
+                   "· 位置发生变化：%d 条\n"
+                   "· 注释与「已禁用（注释保留）」块原样保留，随时可恢复\n" % moved)
+            if hidden:
+                msg += "· 本次未显示的 %d 条（被搜索/过滤隐藏）保持原位不动\n" % hidden
+            msg += "\n写入前自动备份到 backups/，确定继续吗？"
+            box = QMessageBox(self)
+            try:
+                box.setIcon(QMessageBox.Question)
+            except Exception:
+                pass
+            box.setWindowTitle(tagged_title("按当前排序写回配置"))
+            box.setText("把当前列表顺序写入 sites？")
+            box.setInformativeText(msg)
+            b_ok = box.addButton("⇅ 写回配置", QMessageBox.AcceptRole)
+            box.addButton("取消", QMessageBox.RejectRole)
+            try:
+                box.setDefaultButton(b_ok)
+            except Exception:
+                pass
+            box.exec()
+            try:
+                return box.clickedButton() is b_ok
+            except Exception:
+                return False
+
+        def write_sorted_order(self):
+            """⇅ 排序写回配置：把管理列表**当前显示顺序**（即点列头排序 / 过滤后的顺序）
+            落到配置文件的 sites 数组中。位置没变则不写。
+
+            说明：只重排「本次可见」的条目（槽位填充），被搜索/过滤隐藏的条目原地不动；
+            数组内的 `//` 注释与 `/* [disabled] */` 块随其条目一起移动、内容不被改写。"""
+            if self._closed:
+                return
+            if getattr(self, "_scanning", False):
+                QMessageBox.information(self, "提示", "检测进行中，请先「停止」再写回排序。")
+                return
+            keys = [str(e.get("key", "")) for e in self._shown if str(e.get("key", ""))]
+            if len(keys) < 2:
+                QMessageBox.information(self, "提示", "当前可见站点不足 2 条，无需排序。")
+                return
+            hidden = max(len(self.entries) - len(self._shown), 0)
+            try:
+                new_text, moved = pyinj_sections.reorder_by_keys(self.raw, "sites", keys)
+            except Exception as ex:
+                QMessageBox.critical(self, "失败", "重排失败：%s" % ex)
+                return
+            if not moved:
+                QMessageBox.information(
+                    self, "顺序未变",
+                    "当前列表顺序与配置文件里的顺序一致，无需写回。\n\n"
+                    "想调整顺序：先点列表**表头**排序（如按「类型 / 成人 / 可达 / 资源」列），"
+                    "再点本按钮。")
+                return
+            if not self._confirm_sort_write(moved, hidden):
+                return
+            try:
+                bak = backup_and_write(self.repo_dir, new_text, self.cfg_file)
+            except Exception as ex:
+                QMessageBox.critical(self, "写入失败", "未能写入配置：%s" % ex)
+                return
+            self.raw = new_text
+            self.changed = True
+            # 内存里的条目顺序同步到新顺序（保留 _disabled 标记、待保存的改动与检测结果）
+            order = {}
+            for i, (obj, _dis) in enumerate(parse_sites_with_disabled(self.raw)):
+                k = str(obj.get("key", ""))
+                if k and k not in order:
+                    order[k] = i
+            tail = len(order) + len(self.entries)
+            self.entries.sort(key=lambda e: order.get(str(e.get("key", "")), tail))
+            self._refresh_table()
+            self.log_msg("已按当前排序重写 sites（%d 条位置变化；备份 %s）"
+                         % (moved, os.path.basename(bak)), "ok")
+            self._toast("已写回配置（%d 条位置变化）" % moved)
 
         def _ask_purge_mode(self, n_total, n_url, n_file):
             """确认「剔除失效源」的处理方式。返回 "disable" / "remove" / None(取消)。"""

@@ -333,6 +333,73 @@ def reorder_section(text, name, ordered_entries):
     return text[:start] + body + text[close:]
 
 
+def reorder_by_keys(text, name, ordered_keys, key_field="key"):
+    """按 ordered_keys 给出的顺序重排数组内条目（以 key_field 识别）。
+    返回 (新文本, 位置发生变化的条目数)；顺序没变则原样返回 (text, 0)。
+
+    用途：GUI 里点了列头排序（或过滤后）想把「当前看到的顺序」落到配置文件。
+
+    设计（复用「上移/下移」那套片段级机制，因此同样不破坏注释与禁用块）：
+      · 只有「出现在 ordered_keys 里、且能在数组里定位到」的条目参与重排；
+      · **槽位填充**：参与条目按新顺序回填它们原本占据的位置，
+        未参与的条目（如被搜索/过滤隐藏的）与数组内注释**位置不动**；
+      · 数组内注释「跟随其后紧跟的条目」一起移动，说明性注释不会与条目错位
+        （末尾孤立的注释留在末尾）；
+      · 条目原文（obj_text）原样复用 —— 注释式禁用块、缩进写法都不会被改写。
+    """
+    pieces = scan_array_pieces(text, name)
+    if not pieces:
+        return text, 0
+
+    # 1) 切块：注释挂到它后面那个条目上（末尾孤立注释自成一块）
+    blocks = []
+    lead = []
+    for p in pieces:
+        if p["kind"] == "extra":
+            lead.append(p)
+            continue
+        blocks.append({"lead": lead, "ent": p})
+        lead = []
+    if lead:
+        blocks.append({"lead": lead, "ent": None})
+
+    # 2) 目标顺序（去重保序）+ 参与条目的槽位
+    want, seen = [], set()
+    for k in ordered_keys:
+        k = str(k)
+        if k and k not in seen:
+            seen.add(k)
+            want.append(k)
+    idx_of = {}
+    for i, b in enumerate(blocks):
+        if b["ent"] is None:
+            continue
+        k = str((b["ent"]["obj"] or {}).get(key_field, ""))
+        if k and k not in idx_of:
+            idx_of[k] = i
+    hits = [k for k in want if k in idx_of]
+    if len(hits) < 2:
+        return text, 0
+    slots = sorted(idx_of[k] for k in hits)
+    picks = [blocks[idx_of[k]] for k in hits]
+
+    # 3) 槽位回填：按新顺序把参与条目填回它们原来的位置
+    out_blocks = list(blocks)
+    for slot, blk in zip(slots, picks):
+        out_blocks[slot] = blk
+    pos_before = {id(b): i for i, b in enumerate(blocks)}
+    moved = sum(1 for i, b in enumerate(out_blocks) if pos_before.get(id(b)) != i)
+    if not moved:
+        return text, 0
+
+    flat = []
+    for b in out_blocks:
+        flat.extend(b["lead"])
+        if b["ent"] is not None:
+            flat.append(b["ent"])
+    return replace_array_body(text, name, flat), moved
+
+
 def move_section_entry(text, name, entry, offset):
     """把某条目在数组内上移/下移 offset 位（GUI 拖拽/上下移按钮）。返回新文本。
     offset<0 上移，>0 下移；越界则原样返回。
