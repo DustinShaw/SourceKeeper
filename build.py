@@ -6,8 +6,9 @@
      此时日期部分必须等于今天；其它非标准串（节日特别版）跳过核对
      防止跨天会话沿用旧日期（2026-09-25 教训）
   2) 全量源码测试：test_*.py（offscreen，venv python；test_v13_exe 依赖打包产物，移到部署后）
-  3) PyInstaller 打包：PyInjector.spec -> dist/源管家.exe
-  4) 部署冒烟：deploy.py（版本化 exe + 冻结 CLI 冒烟 + 真实 py.json md5 校验）
+  3) 文档 HTML：tools/md2html.py 把 使用方法.md 渲染成带侧边栏书签的 使用方法.html
+  4) PyInstaller 打包：PyInjector.spec -> dist/源管家.exe
+  5) 部署冒烟：deploy.py（版本化 exe + 冻结 CLI 冒烟 + 真实 py.json md5 校验）
 用法：
   python build.py            # 完整流水线
   python build.py --skip-tests   # 跳过测试（仅紧急调试用）
@@ -121,12 +122,16 @@ def main():
     else:
         print("\n== 2) 跳过测试（--skip-tests）==")
 
-    # ---- 3) 打包 ----
-    print("\n== 3) PyInstaller 打包 ==")
+    # ---- 3) 文档 HTML（使用方法.md -> 使用方法.html，带侧边栏书签）----
+    print("\n== 3) 生成文档 HTML（使用方法.html）==")
+    sh([VPY, os.path.join("tools", "md2html.py")])
+
+    # ---- 4) 打包 ----
+    print("\n== 4) PyInstaller 打包 ==")
     sh([VPY, "-m", "PyInstaller", "PyInjector.spec", "--noconfirm"])
 
-    # ---- 4) 部署 + 冒烟（含冻结 exe 测试）----
-    print("\n== 4) 部署冒烟 ==")
+    # ---- 5) 部署 + 冒烟（含冻结 exe 测试）----
+    print("\n== 5) 部署冒烟 ==")
     sh([VPY, "deploy.py"])
     print("\n✅ build.py 全流程完成：源管家 v%s" % ver)
 

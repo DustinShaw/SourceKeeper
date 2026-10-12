@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "1.0.1"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.0.3"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
                              # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
@@ -650,7 +650,12 @@ def run_cli(argv):
         print("已完成 %d 项配置变更。" % len(changed))
         n = 0
         for p in py_plan:
-            if trash_spider(base_dir, p):
+            try:
+                ok = bool(trash_spider(base_dir, p))
+            except Exception as ex:
+                print("  ⚠ .py 删除失败：%s（%s）" % (p, ex))
+                continue
+            if ok:
                 n += 1
                 print("  已删除 .py（备份 py_trash）：%s" % p)
         if n:
@@ -4303,7 +4308,13 @@ def run_gui():
                         self.base_dir, del_py_keys, key_api, self.entries, self.repo_dir,
                         default_search_roots(self.repo_dir, self.cfg_file))
                     for p in to_del:
-                        if trash_spider(self.base_dir, p):
+                        try:
+                            dst = trash_spider(self.base_dir, p)
+                        except Exception as ex2:
+                            # 单个文件删除失败（如占用/权限）不中断其余文件
+                            py_skipped.append((p, "删除失败：%s" % ex2))
+                            continue
+                        if dst:
                             py_deleted.append(p)
                     py_skipped.extend(skipped)
                 except Exception as ex:
@@ -5413,10 +5424,12 @@ def run_gui():
             self.items = items               # [(key, name, entry, api, ext), ...]
             self.results = {}                # key -> 结果 dict
             self.is_py_map = {}              # key -> 本次是否走了 .py 子进程
-            self._row_level = {}             # 行号 -> ok/bad/err/none
+            self._row_level = {}             # 站点 key -> ok/bad/err/none（按 key 存，排序后行号会变）
             self._worker = None
             self._closed = False
             self.base_dir = getattr(parent, "base_dir", None)
+            self._key2idx = dict((it[0], i) for i, it in enumerate(items))  # key -> items 下标
+            self._sort_col, self._sort_asc = -1, True
             self.setWindowTitle(tagged_title("🩺 源测活（模拟宿主程序加载）"))
             self.resize(920, 580)
             root = QVBoxLayout(self)
@@ -5441,6 +5454,9 @@ def run_gui():
                 hh = self.table.horizontalHeader()
                 hh.setSectionResizeMode(self.P_TABS, QHeaderView.Stretch)
                 hh.setSectionResizeMode(self.P_NAME, QHeaderView.ResizeToContents)
+                # 点击表头排序：手动触发（不开 setSortingEnabled——那会让测活中
+                # 数据一更新就整表重排，行来回跳），并配合 UserRole 锚定行↔站点
+                hh.sectionClicked.connect(self._header_sort)
             except Exception:
                 pass
             self.table.itemSelectionChanged.connect(self._show_detail)
@@ -5453,10 +5469,13 @@ def run_gui():
             except Exception:
                 pass
             root.addWidget(self.table, 1)
-            for r, (_k, name, _e2, _api, _e) in enumerate(items):
+            for r, (k, name, _e2, _api, _e) in enumerate(items):
                 for c in range(6):
                     self._set(r, c, name if c == self.P_NAME else
                               ("待测…" if c == self.P_VERDICT else ""))
+                nit = self.table.item(r, self.P_NAME)
+                if nit is not None:
+                    nit.setData(Qt.UserRole, str(k))   # 排序后行号会变，行↔key 靠这个锚定
 
             # 模拟宿主程序的分类标签栏（选中行的完整预览）
             self.lbl_prev = QLabel("选中一行查看该源的完整分类栏")
@@ -5502,8 +5521,11 @@ def run_gui():
         def _set(self, r, col, text, color=None):
             it = self.table.item(r, col)
             if it is None:
-                it = QTableWidgetItem(text)
+                it = QTableWidgetItem()
                 self.table.setItem(r, col, it)
+            # 数字列按数值排序（否则字典序 "10" 会排在 "9" 前面）
+            if col in (self.P_CLASSES, self.P_VIDEOS) and str(text).strip().isdigit():
+                it.setData(Qt.DisplayRole, int(str(text).strip()))
             else:
                 it.setText(text)
             if color:
@@ -5511,6 +5533,42 @@ def run_gui():
                     it.setForeground(QColor(color))
                 except Exception:
                     pass
+
+        def _key_at(self, r):
+            """视觉行 -> 站点 key。排序后行号与 items 下标不再一致，靠 UserRole 锚定。"""
+            if r is None or r < 0 or r >= self.table.rowCount():
+                return None
+            it = self.table.item(r, self.P_NAME)
+            if it is not None:
+                k = it.data(Qt.UserRole)
+                if k is not None:
+                    return str(k)
+            if r < len(self.items):
+                return self.items[r][0]
+            return None
+
+        def _row_of_key(self, key):
+            for r in range(self.table.rowCount()):
+                if self._key_at(r) == key:
+                    return r
+            return -1
+
+        def _header_sort(self, col):
+            """点击表头排序：再点一次反向；行隐藏与详情随后重算。"""
+            if self._sort_col == col:
+                self._sort_asc = not self._sort_asc
+            else:
+                self._sort_col, self._sort_asc = col, True
+            order = Qt.AscendingOrder if self._sort_asc else Qt.DescendingOrder
+            try:
+                hh = self.table.horizontalHeader()
+                hh.setSortIndicatorShown(True)
+                hh.setSortIndicator(col, order)
+            except Exception:
+                pass
+            self.table.sortItems(col, order)
+            self._apply_filter()          # 行序变了，「只看死源」的隐藏标记要按新行号重算
+            self._show_detail()
 
         def _color(self, lvl):
             dark = bool(IS_DARK)
@@ -5537,10 +5595,12 @@ def run_gui():
 
         def _show_detail(self):
             r = self.table.currentRow()
-            if r < 0 or r >= len(self.items):
+            key = self._key_at(r)
+            idx = self._key2idx.get(key) if key else None
+            if idx is None:
                 return
-            name = self.items[r][1]
-            res = self.results.get(self.items[r][0])
+            name = self.items[idx][1]
+            res = self.results.get(key)
             if not res:
                 self.lbl_prev.setText("“%s”：尚未测到（等待中）" % name)
                 self.preview.setText("")
@@ -5589,9 +5649,11 @@ def run_gui():
             return False
 
         def _item_at(self, row):
-            if row is None or row < 0 or row >= len(self.items):
+            key = self._key_at(row)
+            if key is None:
                 return None
-            return self.items[row]
+            idx = self._key2idx.get(key)
+            return self.items[idx] if idx is not None else None
 
         def _on_double_click(self, row, _col):
             """双击 = 按 type 打开该源的正确目标（本地脚本 / 远程 jar / API 链接 / 目录）。"""
@@ -5716,9 +5778,9 @@ def run_gui():
                 return []
             keys = []
             for idx in rows:
-                r = idx.row()
-                if 0 <= r < len(self.items):
-                    keys.append(self.items[r][0])
+                k = self._key_at(idx.row())
+                if k is not None:
+                    keys.append(k)
             # 去重保序
             seen = set()
             out = []
@@ -5758,10 +5820,11 @@ def run_gui():
                 self._worker = None
             # 只清空本次要测活的行的旧结果，保留其它行已测出的判定
             sel_keys = set(it[0] for it in subset)
-            for r, (k, _n, _e2, _api, _e) in enumerate(self.items):
+            for r in range(self.table.rowCount()):
+                k = self._key_at(r)
                 if k in sel_keys:
                     self.results.pop(k, None)
-                    self._row_level.pop(r, None)
+                    self._row_level.pop(k, None)
                     self._set(r, self.P_VERDICT, "待测…")
                     self._set(r, self.P_CLASSES, "")
                     self._set(r, self.P_TABS, "")
@@ -5802,11 +5865,10 @@ def run_gui():
         def _on_item(self, key, name, res, is_py):
             self.results[key] = res
             self.is_py_map[key] = bool(is_py)
-            for r, (k, _n, _e2, _api, _e) in enumerate(self.items):
-                if k != key:
-                    continue
+            r = self._row_of_key(key)
+            if r >= 0:
                 lvl, verdict = source_verdict(res)
-                self._row_level[r] = lvl
+                self._row_level[key] = lvl
                 self._set(r, self.P_VERDICT, verdict, self._color(lvl))
                 names = res.get("classes") or []
                 self._set(r, self.P_CLASSES, str(len(names)) if res.get("ok") else "")
@@ -5816,7 +5878,6 @@ def run_gui():
                 self._set(r, self.P_VIDEOS, str(res.get("videos", 0)) if res.get("ok") else "")
                 note = "" if lvl == "ok" else (res.get("error") or "分类为空，无标签栏")
                 self._set(r, self.P_NOTE, note, self._color(lvl))
-                break
             self._apply_filter()
             self._summary()
             self._show_detail()
@@ -5854,7 +5915,7 @@ def run_gui():
             except Exception:
                 pass
             for r in range(self.table.rowCount()):
-                lvl = self._row_level.get(r)
+                lvl = self._row_level.get(self._key_at(r))
                 hide = only_bad and not (lvl in ("bad", "err"))
                 try:
                     self.table.setRowHidden(r, hide)

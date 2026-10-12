@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>源管家 使用方法</title>
+<style>
+:root{
+  --bg:#ffffff; --fg:#1f2328; --muted:#57606a; --line:#d8dee4;
+  --card:#f6f8fa; --side:#f6f8fa; --link:#0969da; --accent:#3a82c7;
+  --code-bg:#eff1f3; --code-fg:#b3402a; --quote-bg:#f6f8fa; --quote-line:#d0d7de;
+  --th-bg:#f0f3f6;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#1c2128; --fg:#e6edf3; --muted:#9aa4b0; --line:#3a4048;
+    --card:#22272e; --side:#22272e; --link:#6cb6ff; --accent:#3a82c7;
+    --code-bg:#2d333b; --code-fg:#ffab70; --quote-bg:#22272e; --quote-line:#3a4048;
+    --th-bg:#2d333b;
+  }
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:15px/1.75 "Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+}
+a{color:var(--link); text-decoration:none;}
+a:hover{text-decoration:underline;}
+code{
+  font-family:"Cascadia Mono",Consolas,"Courier New",monospace; font-size:.9em;
+  background:var(--code-bg); color:var(--code-fg); padding:.15em .4em; border-radius:4px;
+}
+pre{
+  background:var(--code-bg); padding:12px 14px; border-radius:8px; overflow:auto;
+  border:1px solid var(--line);
+}
+pre code{background:none; color:var(--fg); padding:0; font-size:.88em;}
+
+/* ---------- 布局 ---------- */
+.wrap{display:flex; align-items:flex-start;}
+aside{
+  position:sticky; top:0; flex:0 0 268px; height:100vh; overflow-y:auto;
+  background:var(--side); border-right:1px solid var(--line); padding:20px 12px 32px;
+}
+aside .brand{
+  font-weight:700; font-size:15px; padding:0 10px 12px; margin-bottom:8px;
+  border-bottom:1px solid var(--line); color:var(--fg);
+}
+aside .brand small{display:block; font-weight:400; font-size:12px; color:var(--muted); margin-top:4px;}
+aside nav a{
+  display:block; padding:5px 10px; margin:1px 0; border-radius:6px;
+  color:var(--muted); font-size:13.5px; border-left:2px solid transparent;
+}
+aside nav a:hover{background:var(--card); color:var(--fg); text-decoration:none;}
+aside nav a.lv2{padding-left:26px; font-size:12.8px;}
+aside nav a.active{color:var(--accent); border-left-color:var(--accent); background:var(--card); font-weight:600;}
+main{flex:1 1 auto; min-width:0; padding:34px 46px 90px; max-width:1000px;}
+h1{font-size:26px; margin:0 0 18px;}
+h2{
+  font-size:20px; margin:34px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line);
+  scroll-margin-top:16px;
+}
+h3{font-size:16.5px; margin:24px 0 10px; scroll-margin-top:16px;}
+h4{font-size:15px; margin:18px 0 8px;}
+p{margin:10px 0;}
+ul,ol{margin:10px 0; padding-left:26px;}
+li{margin:4px 0;}
+hr{border:0; border-top:1px solid var(--line); margin:26px 0;}
+blockquote{
+  margin:14px 0; padding:10px 14px; background:var(--quote-bg);
+  border-left:3px solid var(--quote-line); border-radius:0 6px 6px 0; color:var(--muted);
+}
+blockquote p{margin:6px 0;}
+.tw{overflow-x:auto; margin:12px 0;}
+table{border-collapse:collapse; width:100%; font-size:13.5px;}
+th,td{border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top;}
+th{background:var(--th-bg); font-weight:600; white-space:nowrap;}
+tbody tr:nth-child(even){background:var(--card);}
+
+/* 顶部说明条 + 回顶 */
+.top-note{
+  font-size:12.5px; color:var(--muted); background:var(--card);
+  border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:18px;
+}
+#gotop{
+  position:fixed; right:22px; bottom:22px; width:42px; height:42px; border-radius:50%;
+  background:var(--accent); color:#fff; border:0; cursor:pointer; font-size:18px;
+  box-shadow:0 2px 10px rgba(0,0,0,.25); display:none;
+}
+#gotop:hover{filter:brightness(1.08);}
+
+/* 窄屏：侧边栏变抽屉 */
+#menu-btn{
+  display:none; position:fixed; left:14px; top:14px; z-index:40; width:42px; height:42px;
+  border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg);
+  font-size:18px; cursor:pointer;
+}
+#mask{display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:30;}
+@media (max-width:900px){
+  #menu-btn{display:block;}
+  aside{
+    position:fixed; left:0; top:0; z-index:35; transform:translateX(-100%);
+    transition:transform .22s ease; box-shadow:0 0 24px rgba(0,0,0,.3);
+  }
+  body.nav-open aside{transform:translateX(0);}
+  body.nav-open #mask{display:block;}
+  main{padding:64px 18px 80px;}
+}
+</style>
+</head>
+<body>
+<button id="menu-btn" aria-label="目录">☰</button>
+<div id="mask"></div>
+<div class="wrap">
+<aside>
+  <div class="brand">源管家 使用方法<small>v1.0.3</small></div>
+  <nav>
+    <a href="#first">0. 第一次使用</a>
+    <a href="#scene-1">场景 1：注入新爬虫（.py → 配置）</a>
+    <a href="#sec" class="lv2">注入一个/几个文件</a>
+    <a href="#py" class="lv2">批量注入 py/ 目录里所有未注册的</a>
+    <a href="#cms-py" class="lv2">添加"直连 CMS"源（没有 .py 的那种）</a>
+    <a href="#scene-2">场景 2：管理已有站点</a>
+    <a href="#scene-2b">场景 2b：把当前排序写进配置文件（⇅ 排序写回配置）</a>
+    <a href="#scene-3">场景 3：给站点做"体检"</a>
+    <a href="#sec-2" class="lv2">① 资源存在性（自动，无需操作）</a>
+    <a href="#sec-3" class="lv2">② 成人/短剧/直播检测（手动）</a>
+    <a href="#url" class="lv2">③ URL 可达性检测（手动）</a>
+    <a href="#sec-4" class="lv2">④ 需要走代理做检测时（🌐 代理服务器）</a>
+    <a href="#scene-4">场景 4：临时停用某个源（不删除）</a>
+    <a href="#scene-5">场景 5：处理"缺失 .py"的条目</a>
+    <a href="#scene-6">场景 6：查重 / 去重</a>
+    <a href="#sec-5" class="lv2">判重口径（重要）</a>
+    <a href="#scene-7">场景 7：把另一份配置合并进来（🔀 合并导入）</a>
+    <a href="#scene-8">场景 8：管理直播 / 解析 / 广告等其它分区</a>
+    <a href="#scene-9">场景 9：命令行批处理（脚本/定时任务）</a>
+    <a href="#faq">常见问题</a>
+    <a href="#win7">Win7 版怎么来 / 怎么打</a>
+    <a href="#backup">备份文件一览</a>
+    <a href="#sec-6">网页版（带书签目录）</a>
+  </nav>
+</aside>
+<main>
+  <div class="top-note">本页由 <code>使用方法.md</code> 自动生成 · v1.0.3 —— 侧边栏可直接跳转章节。</div>
+<h1 id="top">源管家 使用方法</h1>
+<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.0.3</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.0.3</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.0.3.exe</code>（Win10+，Qt6） · <code>源管家 v1.0.3-Win7.exe</code>（Win7，Qt5）</p></blockquote>
+<hr>
+<h2 id="first">0. 第一次使用</h2>
+<ol><li>双击 <code>源管家 v&lt;版本&gt;.exe</code>（本版为 <code>源管家 v1.0.3.exe</code>；版本号是三段式 <code>主.次.修订</code>）。</li><li>点「选择…」选中<strong>仓库目录</strong>（里面应有配置文件和 <code>py/</code> 文件夹）。</li><li>配置文件一般留空即可——程序会自动识别（主窗口状态标签显示「已加载 xxx.json · 站点 N 个」即成功；窗口标题为「仓库路径 — 源管家 v&lt;版本&gt;」，版本号在所有标题栏与「ℹ 关于」里都能看到）。</li><li>如果你的配置文件不是自动识别到的那一个：<strong>点「配置文件」框右侧的 ▼</strong>，下拉直接列出仓库目录里的全部候选 JSON（py.json 优先），点选即加载；也可以手动输入文件名（如 <code>12.json</code>）后回车，或点「自动识别」重试。切换仓库目录后下拉候选会自动刷新。</li></ol>
+<blockquote><p>以后每次启动会自动加载上次的仓库目录，无需重复选择。</p></blockquote>
+<hr>
+<h2 id="scene-1">场景 1：注入新爬虫（.py → 配置）</h2>
+<h3 id="sec">注入一个/几个文件</h3>
+<ol><li>点「📄 注入文件」，在文件框里<strong>可多选</strong>；也可以直接把 .py 文件<strong>拖进主窗口</strong>完成注入。</li><li>选中的文件出现在下方「待注入列表」（列表空着时会显示操作引导，告诉你这三种加法；双击列表项可改 key / name）。</li><li>看情况调整「全局开关」（可筛选 / 速搜 / 可搜索）。type 不用管——注入 <code>.py</code> 时已按标准规则自动推断为 <code>3</code>（Spider）；开关里的 type 只在条目自身没有 type 时才兜底，不会覆盖已有站点的 type。</li><li>点「💾 写入配置」→ 完成（自动备份原配置）。</li></ol>
+<ul><li>文件在仓库外？勾选「仓库外文件复制到 py/」，程序会先复制再登记。</li><li>缺 <code>class Spider</code> 的文件会被跳过并在日志里说明。</li></ul>
+<h3 id="py">批量注入 py/ 目录里所有未注册的</h3>
+<ol><li>点「🔍 扫描目录」。</li><li>扫描结果直接进待注入列表；同时日志会<strong>反向校验</strong>已注册条目的 .py 是否还在：</li><li><code>✗ 缺失 .py：key（api）对应文件不存在</code> → 见场景 5</li><li><code>✓ 已注册 N 个站点的 .py 文件均存在</code> → 一切正常</li><li>点「💾 写入配置」。</li></ol>
+<blockquote><p>写入前程序自动按 key / api 查重，重复的不会重复登记。</p></blockquote>
+<h3 id="cms-py">添加"直连 CMS"源（没有 .py 的那种）</h3>
+<p>有些源不是爬虫脚本，而是一个 JSON 接口地址（<code>type: 1</code>），比如苹果 CMS 的 <code>https://xxx.com/api.php/provide/vod</code>。</p>
+<ol><li>点主窗口工具栏「➕ 添加直连」。</li><li>在弹出的输入框里<strong>粘贴 API 地址</strong>（一行一个也可以，粘贴多行会逐个登记）。</li><li>程序自动：推断 <code>type = 1</code>、按域名生成 name、生成一个唯一 key → 条目进入待注入列表。</li><li>双击条目可改 key / name；点「💾 写入配置」落盘。</li></ol>
+<blockquote><p>name / key 可以随便改，但 key 一旦写进配置就不建议再动（APP 可能已用它做了缓存/排序）。</p></blockquote>
+<hr>
+<h2 id="scene-2">场景 2：管理已有站点</h2>
+<p>点主界面「⚙ 管理站点」打开管理列表（10 列：name / api / 类型 / 筛选·快搜·搜 / 成人 / 短剧 / 直播 / 可达 / 禁用 / 资源；key 在编辑弹窗里可见，不单占一列）。搜索无结果时，表格中央会显示「没有匹配的站点」。</p>
+<p>列表顶部右侧有<strong>过滤下拉框</strong>（全部 / 直连 CMS(1) / Spider(3) / XML(0) / 目录(4) / 🔞 仅成人 / ⚠️ 仅需代理 / ⛔ 仅失效源），可按源类型快速只看某一类；它与左侧搜索框是叠加关系（先搜关键字、再筛类型）。「仅需代理」需先点底部「🌐 网络体检」跑一遍；「⛔ 仅失效源」需先跑过「🩺 源测活」或 URL 可达性检测，且<strong>只认明确失效的源</strong>（未检测过的不算）。</p>
+<div class="tw"><table><thead><tr><th>我想……</th><th>操作</th></tr></thead><tbody><tr><td>快速找某个站</td><td>顶部搜索框输关键字（key/name/api 实时筛选）；回车跳下一个匹配，框内 × 清空，Ctrl+F 聚焦</td></tr><tr><td>打开某站源码</td><td>直接点击该行的 api 单元格，用系统默认程序打开对应 .py</td></tr><tr><td>按某列排队</td><td>点列头（再点一次切换升降序）。<strong>这只是排序看法</strong>；想让这个顺序真正写进配置文件，点底部「⇅ 排序写回配置」</td></tr><tr><td>改名字/type 等</td><td><strong>双击该行</strong>（api 列除外）弹出编辑窗口 → 改完 →「保存并写入」</td></tr><tr><td>打开目标</td><td>api 列是蓝色下划线链接样式，<strong>单击</strong>即用系统默认程序打开「按 type 对应的目标」：本地 Spider→<code>.py</code>、jar 型→所依赖的 jar、直连→浏览器打开 API、目录型→打开目录</td></tr><tr><td>禁用 / 启用</td><td>选中一行或多行（Ctrl/Shift 可多选）→「禁用选中」/「启用选中」（按钮按选中项状态自动亮/灰；批量时只作用于对应状态的项，立即写盘）</td></tr><tr><td>删站点</td><td>选中一行或多行（Ctrl/Shift 可多选）→「删除选中」→ 弹窗确认 → 决定是否勾选「同时删除对应 .py 文件」→「保存并写入」</td></tr><tr><td>批量收拾失效源</td><td>点「资源」列头，缺失的排最前，集中禁用或删除</td></tr><tr><td>一键清理失效源</td><td>先跑过「🩺 源测活」或 URL 检测 → 过滤下拉选「⛔ 仅失效源」看清单 → 底部「🧹 剔除失效源」批量 禁用(推荐) / 删除（未检测的源一律不动）</td></tr><tr><td>只看某类源</td><td>顶部右侧过滤下拉框选「直连 CMS(1) / Spider(3) / XML(0) / 目录(4) / 🔞 仅成人 / ⚠️ 仅需代理 / ⛔ 仅失效源」</td></tr><tr><td>右键快捷操作</td><td>表格里<strong>右键任意行</strong>：编辑 / 打开目标（按 type）/ 复制 api / 禁用 / 启用 / 删除</td></tr><tr><td>导出一份干净的</td><td>底部「📤 导出干净配置」→ 勾掉要排除的类型、或搜关键词 → 勾选要保留的站点 → 填输出文件名 →「导出」（不动现有配置）</td></tr><tr><td>一键分成两套</td><td>底部「🔀 智能分流导出」→ 按 <code>adult</code> 标记自动生成「纯净版（剔除成人）+ 完整版（保留全部）」，可勾选叠加成人扫描结果 → 填目录/文件名 →「导出两套」</td></tr><tr><td>查源是不是死的</td><td>底部「🩺 源测活」→ 自动逐个在子进程里加载 .py → 看「判定」列（活源 / 死源 / 异常）与「分类标签预览」列；下面预览区还原宿主程序顶部那一排标签，勾「只看死源/异常」可集中处理</td></tr><tr><td>把死源排到一起</td><td>测活结果表里点「判定」列头（再点一次反向）；点「名称 / 分类数 / 首页影片」等列头同理，按列排序后双击 / 右键操作仍对准原站点</td></tr></tbody></table></div>
+<p><strong>快捷键</strong>（管理列表内）：</p>
+<div class="tw"><table><thead><tr><th>按键</th><th>作用</th></tr></thead><tbody><tr><td>Ctrl+F</td><td>聚焦搜索框</td></tr><tr><td>回车</td><td>跳到下一个匹配</td></tr><tr><td>Esc</td><td>清空搜索；搜索已空则关闭列表</td></tr><tr><td>Ctrl+S</td><td>保存并写入</td></tr><tr><td>Delete</td><td>删除选中行（等同「删除选中」按钮）</td></tr><tr><td>F5</td><td>刷新列表并重新检测 .py 存在性</td></tr><tr><td>Ctrl+A</td><td>全选</td></tr></tbody></table></div>
+<p><strong>贴心行为</strong>：程序会记住上次的仓库目录（下次打开自动加载）、管理列表的窗口大小、列宽和排序方式。有暂存未写入的更改时，计数行会显示红色「● 未保存更改」；此时直接关闭窗口会询问「保存 / 放弃 / 取消」。表格各列<strong>按内容自适应</strong>（宽度贴合内容、不留多余空白），均可<strong>拖动表头边界</strong>调整；手动拖过的列会按你的设置记住。</p>
+<p><strong>删除时的选择</strong>：</p>
+<ul><li><strong>不勾选（默认）</strong>：只删配置项、保留 .py —— 以后想再加回来，重新注入即可。</li><li><strong>勾选</strong>：连 .py 一起删，删除前自动备份到 <code>py_trash/</code>；若别的站点还在用同一个 .py，会自动跳过不删。</li></ul>
+<blockquote><p>「保存并写入」前，你的编辑/删除都只是暂存；不保存直接关窗口 = 什么都没发生。 例外：「禁用选中 / 启用选中」点下去就立即写盘（自动备份）。</p></blockquote>
+<hr>
+<h2 id="scene-2b">场景 2b：把当前排序写进配置文件（⇅ 排序写回配置）</h2>
+<p>点列头排序只改变<strong>显示顺序</strong>，配置文件里 <code>sites</code> 的顺序没动。想让这个顺序真正落盘（例如让某些源排在前面、被宿主程序优先使用，或把失效/缺文件的源集中排到末尾）：</p>
+<ol><li>先排好你想要的顺序 —— 点列头（如按「类型 / 直播 / 成人 / 可达 / 资源」列，再点一次切换升降序）；也可以先用搜索框或过滤下拉框<strong>只留下想排的那批</strong>；</li><li>点底部第 2 行的 <strong><code>⇅ 排序写回配置</code></strong> ；</li><li>确认框会写明「位置发生变化 N 条」（若本次被搜索/过滤隐藏了条目，也会写明「隐藏 M 条保持原位不动」）→ 点「⇅ 写回配置」。</li></ol>
+<p>要点：</p>
+<ul><li><strong>只动可见的那部分</strong>：隐藏条目的位置不动（槽位填充），不会把它们甩到末尾；</li><li><strong>内容不变</strong>：条目逐字保留，<code>//</code> 注释跟着它下面那条走，<code>/<em> [disabled] </em>/</code> 禁用块原样保留（仍禁用，可随时「启用选中」恢复）；</li><li><strong>写入前自动备份</strong>到 <code>&lt;仓库&gt;/backups/</code>，随时可回滚；</li><li>顺序与文件一致时<strong>不会写</strong>，只提示；</li><li>「成人/短剧/直播检测」运行期间点它会被拦住（提示先停止），避免与检测结果刷新冲突。</li></ul>
+<blockquote><p>顺手的用法：按「可达」或「资源」列把不可达 / 缺文件的源排到一起 → <code>⇅ 排序写回配置</code> → 以后打开就在末尾集中复查。</p></blockquote>
+<hr>
+<h2 id="scene-3">场景 3：给站点做"体检"</h2>
+<p>打开管理列表后：</p>
+<h3 id="sec-2">① 资源存在性（自动，无需操作）</h3>
+<p>「资源」列自动后台检测，几秒出结果（列头已由旧版的「文件」改名，因为它现在连直连源一起管）：</p>
+<div class="tw"><table><thead><tr><th>显示</th><th>含义</th><th>建议</th></tr></thead><tbody><tr><td>正常（绿）</td><td>.py 在配置路径上</td><td>无需处理</td></tr><tr><td>缺失（红）</td><td>文件丢了，该站是死源</td><td>禁用、删除，或找回文件</td></tr><tr><td>已找回（橙）</td><td>原路径失效，但在仓库别的文件夹找到了同名文件</td><td>双击该行把 api 改成新路径</td></tr><tr><td>远程（灰）</td><td>api 是 http 的 Spider/远程源，不校验本地文件</td><td>无需处理</td></tr><tr><td>直连（蓝）</td><td>该站是 type:1 直连 CMS 接口源，无本地文件</td><td>无需处理</td></tr></tbody></table></div>
+<p>有异常时，上方检测分组标题会显示 <code>⚠ Spider 资源缺失 N 个</code>（只统计本地 Spider 源；type:1 直连 / 0 XML / 4 目录 / 远程源不参与，不会误报）。</p>
+<h3 id="sec-3">② 成人/短剧/直播检测（手动）</h3>
+<p>在「检测」卡片里勾选 <code>成人/短剧/直播</code>，点「开始」→ 逐站读 .py 文本，<strong>同一遍扫描</strong>同时判定三类内容：</p>
+<ul><li>成人内容命中的在「成人」列标红 <code>是(检)</code></li><li>短剧类源命中的在「短剧」列标橙 <code>是(检)</code></li><li>直播类源命中的在「直播」列标紫 <code>是(检)</code></li></ul>
+<p>检测素材分源类型自动适配：</p>
+<ul><li><strong>Spider 源（type 3）</strong>：读本地 .py 文本 + 站点名 + ext 字段</li><li><strong>直连/XML/目录源（type 0/1/4）</strong>：无本地 .py，按 <strong>站点名 + ext 字段</strong> 判定</li><li><strong>深度检测（可选勾选，默认关）</strong>：勾上后对 api 为 http(s) 地址的直连站<strong>实际拉取一次接口页面内容</strong>（移动 UA、8 秒超时、限 256KB、失败静默跳过），把返回文本一并送入关键词匹配——能抓出「站名干净但分类里全是成人内容」的漏网站点。代价是每站一次网络请求，检测明显变慢（串行），建议平时关闭、需要排查时再勾。</li></ul>
+<p>成人词表已与「分类词库」统一为单一来源，词条可由用户自行维护（旧的部分易误伤词条已剔除）。</p>
+<p><strong>讨厌短剧或直播源？</strong> 检测完成后点底部「禁用短剧」或「禁用直播」，一键把对应类源批量注释禁用（可逆，随时「启用选中」恢复）。也可以先点对应列头把该类源排最前，逐个确认后再操作。</p>
+<h3 id="url">③ URL 可达性检测（手动）</h3>
+<p>在「检测」卡片里勾选 <code>URL 可达性</code>，点「开始」→ <strong>按 type 分流</strong>探测：Spider 源抽取其 .py 里的源地址，直连（type:1）/ XML（0）/ 目录（4）源直接探测其接口地址，TCP + HTTP 双方法：</p>
+<ul><li><code>可达(tcp:443)</code>（绿）/ <code>不可达</code>（红）/ 无地址可用（灰，如本地 .py 缺失）</li><li>不可达只是标记，<strong>不会自动禁用</strong>——你可以点「可达」列头把不可达排前面，再手动禁用。</li></ul>
+<p>「检测」卡片底部是<strong>一行共用控制</strong>（开始 / 暂停（继续）/ 停止）：勾哪路就跑哪路，两路可同时跑、互不干扰，可随时暂停或停止。检测期间编辑类按钮暂时锁定，「关闭」始终可用。</p>
+<h3 id="sec-4">④ 需要走代理做检测时（🌐 代理服务器）</h3>
+<p>检测卡片<strong>最底部</strong>有一行 <code>🌐 代理服务器：[输入框] [🔌 验证] [状态]</code>，「🧰 工具箱 → 网络诊断」页顶部也有同一行（<strong>两处共用同一设置</strong>，改一处另一处自动同步，关掉程序也记得）：</p>
+<ol><li>在输入框填代理地址，例如 <code>http://127.0.0.1:7890</code>（Clash/V2Ray 的 HTTP 端口）或 <code>socks5://127.0.0.1:7891</code>；<strong>留空就是直连</strong>（系统里的 <code>HTTP_PROXY</code> 环境变量不会被自动跟随，检测到只会提示你一句）。</li><li>点 <strong>🔌 验证</strong> —— 它在后台连一次 <strong>Google 首页</strong>：能打开就是「✓ 正常」，打不开就告诉你原因（超时 / 被拒 / 地址写错…）。</li><li>如果显示"<strong>直连不通 → 代理确实在起作用</strong>"，说明这个代理真的在用，最理想；</li><li>如果直连也能打开 Google，只说明代理可用，是否必须由你判断。</li><li>验证通过后，<strong>URL 可达性 / 网络体检 / 工具箱各项 / 🩺 源测活连同 py 源自身的请求</strong>都会经这个代理出去，直接点「开始」检测即可。</li></ol>
+<blockquote><p>几点要知道的口径：</p><p>- 走代理时<strong>不再做 TCP 直连</strong>（TCP 绕不过代理），URL 可达性只看经代理的 HTTP 是否 2xx/3xx； - 源测速走代理后<strong>没有 TCP 兜底</strong>，数值就是经代理的 HTTP 延迟； - 网络诊断经代理时<strong>本机 DNS 不参与</strong>（域名交给代理解析），所以「IP」列为空、结论会写明"经代理"； - 若代理填的是 <strong><code>socks5://</code></strong>：工具自身的检测全都没问题（内置 SOCKS5，免装依赖），但 <strong>🩺 源测活</strong>用的是 py 源自己的 <code>requests</code>，走 SOCKS5 需要 <code>PySocks</code>——没有它时结果里会 明确提示"仅供参考"，<strong>不会假装是死源</strong>。想测得准就用代理软件的 <strong>HTTP 端口</strong> （Clash 的 <code>127.0.0.1:7890</code> 是混合端口，直接填它即可）。</p></blockquote>
+<hr>
+<h2 id="scene-4">场景 4：临时停用某个源（不删除）</h2>
+<ol><li>选中行 → 点「禁用选中」→ 立即生效（自动备份）。</li><li>该站点在配置里被注释起来，APP 加载时即忽略；列表「禁用」列显示「是」。</li><li>想恢复：选中 →「启用选中」。</li></ol>
+<blockquote><p>被禁用的条目仍处于注释状态，要先启用才能编辑。</p></blockquote>
+<hr>
+<h2 id="scene-5">场景 5：处理"缺失 .py"的条目</h2>
+<p>按实际意图三选一：</p>
+<ol><li><strong>源已废弃</strong> → 选中（可多选）→「删除选中」（可同时删掉已不存在的 .py 登记）。</li><li><strong>只是暂时不想用</strong> → 选中 →「禁用选中」。</li><li><strong>文件其实还在，只是文件夹被改名/移动</strong> → 若显示「已找回」，双击该行把 api 改成找回的新路径；或把文件夹改回原名后重新打开列表确认变「正常」。</li></ol>
+<hr>
+<h2 id="scene-6">场景 6：查重 / 去重</h2>
+<ul><li>GUI：表格里<strong>右键任意行 → <code>🔍 查重</code></strong> 查看重复报告；主窗口顶部工具栏的 <strong><code>♻ 去重</code></strong>（与 <code>⚙ 管理站点</code> 同排）一键清理重复项（保留首个，不删 .py）。</li><li>CLI：<code>--check</code> 只报告，<code>--dedup --write</code> 落盘。</li></ul>
+<h3 id="sec-5">判重口径（重要）</h3>
+<p><strong>不是「name 相同」就算重复，也不是「api 相同」就算重复。</strong> 真正的重复只认下面两条：</p>
+<div class="tw"><table><thead><tr><th>判定</th><th>含义</th><th>处理</th></tr></thead><tbody><tr><td><strong><code>key</code> 重复</strong></td><td>key 是配置主标识，必须唯一 → 结构性冲突</td><td>去重时删后者</td></tr><tr><td><strong><code>(type + api + jar + ext)</code> 四元组全同</strong></td><td>功能上就是同一个站点（重复登记）</td><td>去重时删后者</td></tr></tbody></table></div>
+<p>反过来，<strong>以下情况不算重复</strong>（属合法配置，查重 / 去重 / 合并都不会碰）：</p>
+<ul><li><strong>仅 <code>api</code> 相同、<code>type</code>/<code>ext</code>/<code>jar</code> 不同</strong> —— 多线路共享同一个 spider 类名。典型是 <code>lubin.jar</code> 这类</li></ul>
+<p>「多仓聚合 jar」：一个 <code>csp_PanWebShare</code> 类对应 8 个<strong>不同的上游站点</strong>，靠 <code>ext.site</code>（上游地址） 区分；<code>csp_Bili</code> / <code>csp_XBPQ</code> / <code>csp_Config</code> 同理。</p>
+<ul><li><strong><code>name</code> 相同但其它不同</strong> —— 名字只是显示标签，可改、可重名，<strong>不参与判重</strong>。</li></ul>
+<blockquote><p>一句话：<strong>身份 = (type + api + jar + ext) 四元组；key 负责唯一性；name 不参与。</strong> 注意 <code>type</code> 也在身份里，且 <strong><code>0</code> 是合法值（XML）</strong> —— 显式写 <code>type: 0</code> 的条目不会被当成"没写"而被改写。</p><p>「合并导入」用的是<strong>同一套口径</strong>，所以三处（查重 / 去重 / 合并）结论一致，不会这里重复那里不重复。</p></blockquote>
+<hr>
+<h2 id="scene-7">场景 7：把另一份配置合并进来（🔀 合并导入）</h2>
+<p>主窗口工具栏点「<strong>🔀 合并导入</strong>」。典型用途：换配置时把旧配置的站点<strong>连脚本一起</strong>搬过来；或把别人分享的一份源并进自己的仓库。</p>
+<p><strong>第 1 步 · 选来源</strong>（三个页签任选其一）：</p>
+<div class="tw"><table><thead><tr><th>来源</th><th>操作</th></tr></thead><tbody><tr><td>本地文件</td><td>「浏览…」选另一份含 <code>sites</code> 的 <code>.json</code> / <code>.jsonc</code> →「解析本地文件」</td></tr><tr><td>粘贴文本</td><td>把配置 JSON 粘进文本框 →「解析粘贴文本」</td></tr><tr><td>URL</td><td>填 <code>http(s)://</code> 地址 →「下载并解析 URL」（github 系地址直连失败会自动走镜像）</td></tr></tbody></table></div>
+<p><strong>第 2 步 · 逐条预览</strong>：表格列为 <code>勾选 / 名称 / key / api·类型 / 判定 / 动作</code>。</p>
+<ul><li>「判定」告诉你这条为什么这样归类：<code>新增</code> / <code>重复(已存在)</code>（功能身份完全相同，<strong>默认不勾且锁定</strong>）/ <code>冲突</code>（key 撞车）</li><li>「动作」每条可选 <strong>新增 / 覆盖 / 跳过</strong>；也可用「全部加入」「全部跳过」批量设</li><li>底部摘要实时算：「来源共 N 条：将新增 x · 覆盖 y · 跳过 z」</li><li>来源里处于<strong>禁用态</strong>的条目，合并后<strong>仍保持禁用</strong></li></ul>
+<p><strong>第 3 步 · 点「合并写入」</strong>。它会：</p>
+<ol><li>把站点写进当前配置（保留原注释与排版的手术式改写），<strong>自动备份</strong>；</li><li><strong>自动搬运配套文件</strong>：<code>api</code>、<code>jar</code>、<code>ext</code> 里指向的 <code>.py/.js/.drpy/.jar</code>，以及这些文件内部再 <code>require</code>/<code>load</code>/<code>import</code> 的<strong>其它文件一并递归搬</strong>（深度 ≤ 4）；</li><li><strong>同名安全处理</strong>：</li><li>内容相同 → 跳过；</li><li><strong>内容不同 → 默认改名</strong>（<code>x.py</code> → <code>x_2.py</code>）<strong>并自动改写所有指向它的引用</strong>（api / jar / 文件内 import / ext 里的路径），<strong>绝不覆盖你已有的文件</strong>；逐文件确认框里也可改选「覆盖（先备份）」或「跳过」；</li><li>来源里有 <code>lives</code>（直播源）/ <code>parses</code>（解析源）/ <code>ads</code>（广告拦截）时，会<strong>弹出明细清单让你逐条勾选</strong>，不会静默并入；<code>ads</code> 按内容<strong>并集去重</strong>（能拦更多广告，重复项自动跳过）；</li><li>找不到的文件（远程 404 等）会列进「未搬运」清单并提示，<strong>不会打断整批导入</strong>。</li></ol>
+<blockquote><p>合并完成后弹窗会汇总：新增/覆盖/跳过条数、配套文件 已复制/已跳过/已改名/未找到、镜像加速条数。 若某个要改引用的文件不是 UTF-8（如 GBK），程序<strong>宁可这条引用不改，也绝不损坏原文件</strong>，并在提示里请你人工核对。</p></blockquote>
+<hr>
+<h2 id="scene-8">场景 8：管理直播 / 解析 / 广告等其它分区</h2>
+<p>站点之外的顶层数组（<code>lives</code> 直播源列表、<code>parses</code> 解析接口、<code>ads</code> 广告规则、<code>rules</code> 播放规则、<code>flags</code>、<code>ijk</code> 播放器参数）在 <strong>「🧰 工具箱 → 分区管理」</strong> 页统一管理。</p>
+<ol><li>打开工具箱，把「功能」下拉切到 <strong>分区管理</strong>；</li><li>上面会出现若干 Tab（<strong>只显示你配置里确实存在的数组</strong>，例如 <code>电视直播（lives）</code>、<code>播放规则（rules）</code>）；</li><li>每个 Tab 里是一张表：<strong>状态 / 名称·标识 / 地址·摘要</strong>。选中一行后用按钮操作：</li><li><strong>➕ 新增</strong> —— 弹出一个 JSON 对象编辑器（各分区字段不同，直接编辑最直观），填完点确定；</li><li><strong>✏ 编辑</strong>（<strong>双击行</strong>同样能编辑）—— 整体替换这一条，别的条目和注释都不受影响；</li><li><strong>🗑 删除</strong> —— 会先让你确认；</li><li><strong>↑ 上移 / ↓ 下移</strong> —— 调整顺序（只动启用中的条目）；</li><li><strong>🚫 禁用 / ✓ 启用</strong> —— 「禁用」是把该条<strong>注释掉</strong>（<code>/<em> [disabled] … </em>/</code>），宿主程序会忽略它，但内容还留在文件里，随时可恢复；</li><li><strong>↻ 重新载入</strong> —— 重新读盘（期间你在别处改过配置时用）。</li><li>每次操作都会<strong>立即写盘并自动备份</strong>到配置目录的 <code>backups/</code>，状态栏会告诉你备份文件名。</li></ol>
+<blockquote><p>合并导入时来源里的 <code>lives</code> / <code>parses</code> / <code>ads</code> 也能逐条勾选并入（见场景 7）；而 <code>rules</code> / <code>flags</code> / <code>ijk</code> 目前<strong>只能在本页管理</strong>——合并导入不会读取它们。</p></blockquote>
+<hr>
+<h2 id="scene-9">场景 9：命令行批处理（脚本/定时任务）</h2>
+<p>通用格式：<code>源管家.exe --repo &lt;仓库目录&gt; [--config &lt;配置文件名&gt;] &lt;动作&gt; [--write]</code></p>
+<p><strong>铁律：不带 <code>--write</code> 只预览、不写盘。</strong> 建议先预览确认，再加 <code>--write</code>。</p>
+<div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td>扫描注入</td><td><code>源管家.exe --repo D:\myrepo --scan --write</code></td></tr><tr><td>注入指定文件</td><td><code>源管家.exe --repo D:\myrepo --inject a.py b.py --write</code></td></tr><tr><td>查看站点</td><td><code>源管家.exe --repo D:\myrepo --list</code></td></tr><tr><td>查重 / 去重</td><td><code>--check</code> / <code>--dedup --write</code></td></tr><tr><td>删除（保留 .py）</td><td><code>--del py_xxx --keep-py --write</code></td></tr><tr><td>改字段</td><td><code>--set py_xxx.adult=1 --write</code></td></tr><tr><td>成人标注</td><td><code>--adult-scan --write</code></td></tr><tr><td>短剧检测 / 批量禁用</td><td><code>--duanju-scan</code> / <code>--duanju-scan --write</code></td></tr><tr><td>直播检测 / 批量禁用</td><td><code>--live-scan</code> / <code>--live-scan --write</code></td></tr><tr><td>URL 检测</td><td><code>--check-url</code></td></tr><tr><td>添加直连 CMS 源</td><td><code>--add-cms https://xxx.com/api.php/provide/vod --write</code></td></tr><tr><td>源测活（含直连）</td><td><code>--probe</code>（type 1 走 HTTP 取分类，type 3 走子进程加载 .py）</td></tr><tr><td>禁用 / 启用</td><td><code>--disable py_a py_b --write</code> / <code>--enable py_a --write</code></td></tr><tr><td>本次运行走代理</td><td>任一命令后加 <code>--proxy http://127.0.0.1:7890</code>（全部网络检测 + 源测活都经它）</td></tr><tr><td>只验证代理是否正常</td><td><code>源管家.exe --check-proxy --proxy socks5://127.0.0.1:7891</code>（以能否连到 Google 首页为准）</td></tr></tbody></table></div>
+<hr>
+<h2 id="faq">常见问题</h2>
+<p><strong>Q：改坏了怎么回退？</strong> 每次写盘前都会自动备份：<code>py.json.bak.&lt;时间戳&gt;</code>。把配置目录里对应备份改回 <code>py.json</code> 即可。删错的 .py 在 <code>py_trash/</code> 里。</p>
+<p><strong>Q：扫描提示"缺失 .py"但文件明明在？</strong> 多半是 py 文件夹被改名或移动了。先看「资源」列是否显示「已找回」——是则改 api 路径；否则检查配置文件里 api 写的是否是相对路径 <code>./py/xxx.py</code>。注意直连源（type:1）本来就没有本地 .py，「资源」列显示「直连」属正常。</p>
+<p><strong>Q：怎么添加一个不带 .py 的直连 CMS 源？</strong> 主窗口工具栏点「➕ 添加直连」，粘贴 API 地址（如 <code>https://xxx.com/api.php/provide/vod</code>）即可：程序自动推断 <code>type=1</code>、按域名生成 name 与唯一 key，进待注入列表后可像 .py 一样双击改名字，再「💾 写入配置」。CLI 等价：<code>--add-cms &lt;API地址&gt;</code>。</p>
+<p><strong>Q：URL 检测显示不可达，但 APP 里能看？</strong> 检测默认走你电脑的<strong>直连</strong>网络。若你在公司网/校园网、或该源本身需要代理才能用，就会误报。<strong>从新版起可以填代理</strong>：在检测卡片底部的「🌐 代理服务器」填上你的代理地址、点「🔌 验证」确认能连上 Google 首页，之后所有检测与源测活都会经这个代理出去，误报就没了。它只是提示，不会自动禁用你的源。</p>
+<p><strong>Q：填了代理，怎么确认它真的在起作用？</strong> 点「🔌 验证」：它会<strong>经代理</strong>和<strong>不经代理</strong>各连一次 Google 首页。若提示"<strong>直连不通 → 代理确实在起作用</strong>"，说明代理真的在用；若直连也能打开 Google，只说明代理可用。留空输入框 = 直连（系统里的 <code>HTTP_PROXY</code> 环境变量<strong>不会</strong>被自动跟随，检测到只会在状态栏提示一句）。</p>
+<p><strong>Q：检测会很慢吗？</strong> 文件存在性检测秒级；成人检测取决于 .py 数量和大小（一般几秒~十几秒）；URL 检测最慢（每站要联网探测），建议需要时再手动开始，可暂停。</p>
+<p><strong>Q：会不会执行我的爬虫代码？</strong> 不会。所有 .py 都只当文本读取，程序从不执行任何爬虫代码。</p>
+<p><strong>Q：界面怎么自动变深色了？</strong> 程序<strong>跟随系统深浅色</strong>：在 Windows 10/11 开启深色主题后启动即为深色界面，切回浅色再启动即恢复，无需任何手动设置。 （注：Win7 版用的是 Qt5 渲染，只跟随系统主题，不支持跟随深浅色切换。）</p>
+<p><strong>Q：标题栏里的「v2610041344」是什么？</strong> <strong>版本号</strong>，格式为语义化三段式 <code>主.次.修订</code>（如 <code>v1.0.3</code>）。所有窗体（主窗口、各对话框、提示弹窗）标题栏都带这个后缀，一眼就能确认手上是哪一版。</p>
+<p><strong>Q：「🧹 剔除失效源」会不会误删我的好源？</strong> 不会。它只认两类<strong>明确失效</strong>信号：① URL 可达性检测判为「不可达」；②「资源」列显示「缺失」。<strong>从没检测过的站点一律不算失效</strong>——如果还没跑过测活 / URL 检测，这个动作等于什么都不做。默认动作是「<strong>禁用</strong>」（随时可用「启用选中」恢复），要真删得在确认框里显式选「删除」，而且只摘配置项、<strong>不删 .py</strong>。</p>
+<p><strong>Q：合并导入会不会覆盖我现有的 .py？</strong> 不会默认覆盖。目标里已有同名文件时：内容相同 → 直接跳过；<strong>内容不同 → 默认改名</strong>（<code>x.py</code> → <code>x_2.py</code>）并把所有指向它的引用（api / jar / 文件内 import / ext 路径）同步改到新名。只有你在逐文件确认框里主动选「覆盖」，才会先备份（<code>backups/companions/</code>）再覆盖。</p>
+<p><strong>Q：Win7 上提示"缺少 xxx.dll"怎么办？</strong> 请用文件名带 <strong><code>-Win7</code> 后缀</strong>的那一份（本版为 <code>源管家 v1.0.3-Win7.exe</code>）。 主程序（Qt6 版，文件名不带后缀）依赖 Python 3.13 / Qt6 的运行库，这两者都要求 Win8 以上，不是打包漏文件。Win7 版走的是 Python 3.9 + Qt5 那一套，才真正支持 Win7；另外确保系统装过 <strong>VC++ 运行库（2015-2019）</strong>。</p>
+<hr>
+<h2 id="win7">Win7 版怎么来 / 怎么打</h2>
+<p>工程里同一份 <code>injector.py</code> 内含 Qt 绑定兼容层：装得到 PySide6 就走 Qt6，装不到就自动回退 PySide2（Qt5），所以两套 exe 由同一份源码产出。</p>
+<pre class="lang-bash"><code># 1) 建 Python 3.9 环境（3.9 是微软最后一个支持 Win7 的 Python）
+&lt;py39&gt; -m pip install -r requirements-win7.txt
+
+# 2) 一键构建（版本核对 → 纯逻辑测试 + Qt5 GUI 冒烟 → 打包 → 冒烟）
+&lt;py39&gt; build_win7.py
+
+# 产出：源管家 v&lt;版本&gt;-Win7.exe（与 Win10+ 版并存，互不覆盖）
+# 本版产出：源管家 v1.0.3-Win7.exe</code></pre>
+<blockquote><p><strong>关于版本号</strong>：本版起改用<strong>语义化三段式</strong> <code>主版本.次版本.修订号</code>（如 <code>1.0.3</code>），两条流水线识别到该格式直接放行、不再核对日期。 旧「日期 + 时间」<code>YYMMDDHHMM</code> 格式<strong>仍然支持</strong>（此时强制前 6 位等于今天）；节日特别版这类标记串（如 <code>"2026 国庆特别版"</code>）会被识别为非标准版本号， 打印「⚠️ 非标准版本号（节日特别版），跳过日期核对」并继续。切换版本风格只需改 <code>APP_VERSION</code> 一处，其余无需回滚。</p></blockquote>
+<p>两条构建流水线的关系：</p>
+<div class="tw"><table><thead><tr><th>脚本</th><th>解释器 / Qt</th><th>产物</th></tr></thead><tbody><tr><td><code>build.py</code></td><td>3.13 / PySide6</td><td><code>源管家 v&lt;版本&gt;.exe</code></td></tr><tr><td><code>build_win7.py</code></td><td>3.9  / PySide2</td><td><code>源管家 v&lt;版本&gt;-Win7.exe</code></td></tr></tbody></table></div>
+<blockquote><p>两条流水线产出的是<strong>同一份 <code>injector.py</code></strong>（内含 Qt 绑定兼容层），功能完全一致；Win7 版用 Qt5 渲染， 不能跟随系统深浅色切换（详见文末 FAQ）。</p></blockquote>
+<hr>
+<h2 id="backup">备份文件一览</h2>
+<div class="tw"><table><thead><tr><th>位置</th><th>内容</th></tr></thead><tbody><tr><td><code>py.json.bak.&lt;时间戳&gt;</code></td><td>每次写配置前的完整备份</td></tr><tr><td><code>backups/&lt;配置名&gt;.&lt;时间戳&gt;.bak</code></td><td>每次写盘的轮转备份（自动只留最近 10 份）</td></tr><tr><td><code>backups/companions/</code></td><td>合并导入时「覆盖」同名配套文件前的备份</td></tr><tr><td><code>py_trash/&lt;名&gt;.&lt;时间戳&gt;.bak</code></td><td>删除 .py 前的备份</td></tr><tr><td><code>源管家 v&lt;版本&gt;.exe</code></td><td>主程序（Win10+），文件名自带版本（旧版本文件天然留存即备份）</td></tr><tr><td><code>源管家 v&lt;版本&gt;-Win7.exe</code></td><td>主程序（Windows 7 专用，Qt5 构建）</td></tr></tbody></table></div>
+<hr>
+<h2 id="sec-6">网页版（带书签目录）</h2>
+<p>本文件会由构建流水线自动渲染成 <strong><code>使用方法.html</code></strong>（单文件、零外链、可离线双击打开）： 左侧固定侧边栏就是全书签目录，点标题直接跳转、滚动时自动高亮当前章节；窄屏自动折叠成 抽屉（左上角 ☰）。深浅色跟随系统。</p>
+<p>手动重新生成：<code>python tools/md2html.py</code>（源文件改了就跑一次；<code>--check</code> 只做校验不写盘）。</p>
+</main>
+</div>
+<button id="gotop" aria-label="回到顶部">↑</button>
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('aside nav a'));
+  var targets = links.map(function(a){
+    return document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1)));
+  });
+  function setActive(idx){
+    links.forEach(function(a,i){ a.classList.toggle('active', i===idx); });
+  }
+  // 滚动高亮：取「当前已越过顶端、且最靠上」的标题
+  var ticking = false;
+  function onScroll(){
+    if(ticking) return;
+    ticking = true;
+    requestAnimationFrame(function(){
+      var y = window.scrollY + 90, best = 0;
+      for(var i=0;i<targets.length;i++){
+        var t = targets[i];
+        if(t && t.offsetTop <= y) best = i;
+      }
+      // 滚到底部时高亮最后一项
+      if(window.innerHeight + window.scrollY >= document.body.scrollHeight - 4){
+        best = targets.length - 1;
+      }
+      setActive(best);
+      document.getElementById('gotop').style.display = window.scrollY > 400 ? 'block' : 'none';
+      ticking = false;
+    });
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  // 初始按 hash 定位
+  if(location.hash){
+    var el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if(el){ el.scrollIntoView(); }
+  }
+
+  // 点击侧边栏：窄屏跳转后收起抽屉
+  links.forEach(function(a){
+    a.addEventListener('click', function(){
+      document.body.classList.remove('nav-open');
+    });
+  });
+
+  var mb = document.getElementById('menu-btn');
+  if(mb){ mb.addEventListener('click', function(){ document.body.classList.toggle('nav-open'); }); }
+  var mask = document.getElementById('mask');
+  if(mask){ mask.addEventListener('click', function(){ document.body.classList.remove('nav-open'); }); }
+  var gt = document.getElementById('gotop');
+  if(gt){ gt.addEventListener('click', function(){ window.scrollTo({top:0, behavior:'smooth'}); }); }
+})();
+</script>
+</body>
+</html>

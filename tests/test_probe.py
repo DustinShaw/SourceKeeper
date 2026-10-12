@@ -435,5 +435,41 @@ while len(d2.results) < 3 and time.time() - t1 < 90:
 ok("补测后 3 个源全部完成", len(d2.results) == 3, d2.results.keys())
 ok("补测后活源结果仍保留", _cell(d2.table, 0, d2.P_VERDICT) == "活源", _cell(d2.table, 0, d2.P_VERDICT))
 
+print("\n== B5) 点击表头排序：行序变化后 行↔站点 映射不串位 ==")
+# 名称升序（按码点）：报错源 < 活的下片源 < 空分类源
+dlg._header_sort(P.P_NAME)
+ok("名称升序第一行=报错源",
+   _cell(dlg.table, 0, P.P_NAME) == "报错源", _cell(dlg.table, 0, P.P_NAME))
+ok("key 锚定正确（_key_at/_row_of_key 互逆）",
+   dlg._key_at(0) == "k_boom" and dlg._row_of_key("k_boom") == 0,
+   "%s / %s" % (dlg._key_at(0), dlg._row_of_key("k_boom")))
+ok("_row_of_key 定位活源行",
+   _cell(dlg.table, dlg._row_of_key("k_alive"), P.P_NAME) == "活的下片源",
+   _cell(dlg.table, dlg._row_of_key("k_alive"), P.P_NAME))
+ok("数字列排序后文本仍是数值", _cell(dlg.table, dlg._row_of_key("k_alive"), P.P_CLASSES) == "3",
+   _cell(dlg.table, dlg._row_of_key("k_alive"), P.P_CLASSES))
+_Opened2 = []
+_ProbeDialog._open_path = staticmethod(lambda p: (_Opened2.append(p), True)[1])
+try:
+    dlg.table.cellDoubleClicked.emit(0, 0)
+    ok("排序后双击第一行打开的是报错源的 .py（映射不串位）",
+       bool(_Opened2) and os.path.abspath(_Opened2[-1]) == os.path.abspath(p_boom), _Opened2)
+finally:
+    _ProbeDialog._open_path = _orig_open
+dlg._header_sort(P.P_NAME)      # 再点一次 = 降序
+ok("名称降序第一行=空分类源",
+   _cell(dlg.table, 0, P.P_NAME) == "空分类源", _cell(dlg.table, 0, P.P_NAME))
+dlg._header_sort(P.P_VERDICT)   # 判定升序：Qt 对中文走 locale 感知（拼音）序
+ok("判定升序第一行=活源（拼音 huó<sǐ<yì）",
+   _cell(dlg.table, 0, P.P_VERDICT) == "活源" and _cell(dlg.table, 2, P.P_VERDICT) == "异常",
+   [_cell(dlg.table, r, P.P_VERDICT) for r in range(3)])
+# 排序后「只看死源/异常」的隐藏行按新行序重算
+dlg.cb_bad.setChecked(True)
+r_alive = dlg._row_of_key("k_alive")
+ok("只看死源/异常：活源行被隐藏", dlg.table.isRowHidden(r_alive))
+ok("只看死源/异常：异常行保留", not dlg.table.isRowHidden(dlg._row_of_key("k_boom")))
+dlg.cb_bad.setChecked(False)
+ok("取消过滤后活源行恢复", not dlg.table.isRowHidden(r_alive))
+
 print("\n结果：%d 通过 / %d 失败" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)

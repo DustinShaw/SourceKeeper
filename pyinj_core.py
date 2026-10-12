@@ -1271,6 +1271,13 @@ def trash_spider(repo_dir, py_path):
     base = os.path.basename(py_path)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     dst = os.path.join(trash, "%s.%s.bak" % (base, ts))
+    # 只读文件（Windows FILE_ATTRIBUTE_READONLY）os.remove 会抛 WinError 5，
+    # 表现为「配置项删了、.py 却还在、下次扫描又出现」。先清只读位再删；
+    # 清除失败不阻断（POSIX 上 0o666 只改权限位，文件随即被删，无副作用）。
+    try:
+        os.chmod(py_path, 0o666)
+    except OSError:
+        pass
     shutil.copy2(py_path, dst)
     os.remove(py_path)
     return dst

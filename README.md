@@ -52,7 +52,7 @@
 
 > **关于直播源**：`lives` 里存的是电视直播源列表（典型字段 `{name, type, url, epg, logo}`），可在「分区管理 → 电视直播（lives）」里逐条新增 / 编辑 / 删除 / 上下移 / 注释式停用；它与「站点」里的直播类**源**（`.py` 里的直播站点，可被检测标紫并一键禁用）是两件事，互不影响。频道表还可用「直播表转换」在 TXT ↔ M3U 之间互转。详见 [功能介绍.md](功能介绍.md) 与 [使用方法.md](使用方法.md) 场景 8。
 
-完整功能与场景操作见 [功能介绍.md](功能介绍.md) 与 [使用方法.md](使用方法.md)。
+完整功能与场景操作见 [功能介绍.md](功能介绍.md) 与 [使用方法.md](使用方法.md)（另提供**带侧边栏书签的网页版** [使用方法.html](使用方法.html)，双击即可按章节跳转，无需联网）。
 
 ## 📦 下载
 
@@ -62,8 +62,8 @@
 
 | 文件 | 适用系统 |
 | --- | --- |
-| `源管家 v1.0.1.exe` | Windows 10+（Qt6） |
-| `源管家 v1.0.1-Win7.exe` | Windows 7（Qt5） |
+| `源管家 v1.0.3.exe` | Windows 10+（Qt6） |
+| `源管家 v1.0.3-Win7.exe` | Windows 7（Qt5） |
 
 ## 🚀 快速开始
 
@@ -108,9 +108,10 @@ python injector.py --live-scan
 | `pyinj_sections.py` 等 | 各功能子模块（**直播源 / 分区管理**、数组重排、分类词库、测速、网络诊断、JAR 体检、直播表转换、诊断报告、自定义代理） |
 | `data/` | 外置词库（`分类词库.txt` / `域名特征库.txt`），分类识别与网络诊断功能依赖，用户可自行编辑，改完重载即生效 |
 | `PyInjector.spec` / `PyInjector-win7.spec` | PyInstaller 打包配置（手工维护，标准版 / Win7 版） |
-| `build.py` / `build_win7.py` | 一键构建脚本（标准版 / Win7 版），含版本核对与全量测试 |
+| `build.py` / `build_win7.py` | 一键构建脚本（标准版 / Win7 版），含版本核对、全量测试、**文档 HTML 生成** |
+| `tools/md2html.py` | 把 `使用方法.md` 渲染成带侧边栏书签的单文件 `使用方法.html`（零依赖、零 CDN） |
 | `deploy*.py` | 部署与冒烟校验脚本 |
-| `tests/` | 单元测试与 GUI 冒烟测试（PySide6 + PySide2 双链），约 62 个用例 |
+| `tests/` | 单元测试与 GUI 冒烟测试（PySide6 + PySide2 双链），约 63 个用例 |
 
 说明：`py/`（用户自备插件脚本）、`py.json`（个人配置）、`data/`（本机词库）、`*.exe`、`dist/`、`build/`、`.workbuddy/` 等不纳入本仓库（见 `.gitignore`），以保持仓库为纯工具源码。
 
@@ -122,7 +123,7 @@ python build.py         # 标准版（需要 PySide6）
 python build_win7.py    # Win7 版（需要 PySide2）
 ```
 
-版本号统一在 `injector.py` 顶部 `APP_VERSION` 定义，采用语义化三段式 `major.minor.patch`（如 `v1.0.1`）；构建脚本据此命名产物并做一致性核对，同时输出两条链路的 exe。
+版本号统一在 `injector.py` 顶部 `APP_VERSION` 定义，采用语义化三段式 `major.minor.patch`（如 `v1.0.3`）；构建脚本据此命名产物并做一致性核对，同时输出两条链路的 exe。
 
 ## 📄 许可证
 

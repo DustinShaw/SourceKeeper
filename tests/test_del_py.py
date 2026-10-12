@@ -59,6 +59,25 @@ try:
     trash_files = os.listdir(os.path.join(tmp, "py_trash"))
     print("py_trash 内容: %s" % trash_files)
 
+    # ---- 只读 .py 也能删除（Windows FILE_ATTRIBUTE_READONLY 会让 os.remove 抛
+    #      WinError 5，曾导致「配置项已删、.py 残留、扫描目录反复出现」）----
+    print("\n== 只读 .py 删除 ==")
+    ro = os.path.join(tmp, "py", "_readonly_case.py")
+    open(ro, "w", encoding="utf-8").write("# 只读用例\nKEY = 'ro'\n")
+    os.chmod(ro, 0o444)  # 置只读
+    assert os.path.isfile(ro)
+    dst_ro = inj.trash_spider(tmp, ro)
+    assert dst_ro and os.path.isfile(dst_ro), "只读 .py 应先备份成功"
+    assert not os.path.isfile(ro), "只读 .py 应能被删除（不再报 WinError 5）"
+    assert open(dst_ro, encoding="utf-8").read() == "# 只读用例\nKEY = 'ro'\n", "备份内容一致"
+    print("只读 .py 删除成功，备份: %s" % os.path.basename(dst_ro))
+    # 正常文件回归：非只读路径不受影响
+    rw = os.path.join(tmp, "py", "_normal_case.py")
+    open(rw, "w", encoding="utf-8").write("KEY = 'rw'\n")
+    dst_rw = inj.trash_spider(tmp, rw)
+    assert dst_rw and not os.path.isfile(rw) and os.path.isfile(dst_rw)
+    print("普通 .py 删除回归通过")
+
     # 验证真实仓库未被触碰
     real_cfg_md5_after = hashlib.md5(open(REAL_CFG, "rb").read()).hexdigest()
     real_py_count_after = len([f for f in os.listdir(os.path.join(HERE, "py")) if f.endswith(".py")])

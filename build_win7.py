@@ -12,8 +12,9 @@ PySide2/Qt5，所以**同一份源码**既能打 Win10+ 版也能打 Win7 版。
   2) 版本核对：APP_VERSION 推荐语义化三段式（如 1.0.0）；旧「日期+时间」YYMMDDHHMM 仍支持，
      此时日期部分必须等于今天；其它非标准串（节日特别版）跳过核对
   3) 测试：纯逻辑 test_*.py（跳过硬依赖 PySide6 的 GUI 用例）+ test_win7_build.py（Qt5 GUI 冒烟）
-  4) PyInstaller 打包：PyInjector-win7.spec -> dist/源管家Win7.exe
-  5) 部署冒烟：deploy_win7.py（版本化命名 + 冻结 exe CLI 冒烟 + py.json md5 校验）
+  4) 文档 HTML：tools/md2html.py 把 使用方法.md 渲染成带侧边栏书签的 使用方法.html
+  5) PyInstaller 打包：PyInjector-win7.spec -> dist/源管家Win7.exe
+  6) 部署冒烟：deploy_win7.py（版本化命名 + 冻结 exe CLI 冒烟 + py.json md5 校验）
 
 用法：
   python build_win7.py            # 完整流水线
@@ -124,12 +125,16 @@ def main():
     else:
         print("\n== 3) 跳过测试（--skip-tests）==")
 
-    # ---- 4) 打包 ----
-    print("\n== 4) PyInstaller 打包（Qt5）==")
+    # ---- 4) 文档 HTML（与 build.py 同步产出，带侧边栏书签）----
+    print("\n== 4) 生成文档 HTML（使用方法.html）==")
+    sh([VPY, os.path.join("tools", "md2html.py")])
+
+    # ---- 5) 打包 ----
+    print("\n== 5) PyInstaller 打包（Qt5）==")
     sh([VPY, "-m", "PyInstaller", "PyInjector-win7.spec", "--noconfirm"])
 
-    # ---- 5) 部署 + 冒烟 ----
-    print("\n== 5) 部署冒烟 ==")
+    # ---- 6) 部署 + 冒烟 ----
+    print("\n== 6) 部署冒烟 ==")
     sh([VPY, "deploy_win7.py"])
     print("\n✅ build_win7.py 全流程完成：源管家 v%s-Win7" % ver)
 
