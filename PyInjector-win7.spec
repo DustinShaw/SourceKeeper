@@ -45,6 +45,8 @@ a = Analysis(
         'csv', 'collections',
         # 自定义代理服务器（与标准版一致：SOCKS5 内置实现，不依赖 PySocks）
         'pyinj_proxy',
+        # 上传到电视/盒子（ADB）：纯标准库
+        'pyinj_upload',
     ],
     hookspath=[],
     hooksconfig={},

@@ -43,6 +43,9 @@ a = Analysis(
         # 自定义代理服务器（SOCKS5 走内置握手实现 —— 刻意**不**依赖 PySocks，
         # 两个构建环境都没有它；HTTP/HTTPS 走 CONNECT 隧道，全部用标准库）
         'pyinj_proxy',
+        # 上传到电视/盒子（ADB）：标准库 subprocess/fnmatch/hashlib/posixpath，
+        # 无第三方依赖；显式声明以免日后改惰性导入时丢模块
+        'pyinj_upload',
     ],
     hookspath=[],
     hooksconfig={},

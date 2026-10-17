@@ -114,7 +114,7 @@ tbody tr:nth-child(even){background:var(--card);}
 <div id="mask"></div>
 <div class="wrap">
 <aside>
-  <div class="brand">源管家 使用方法<small>v1.0.3</small></div>
+  <div class="brand">源管家 使用方法<small>v1.1.0</small></div>
   <nav>
     <a href="#first">0. 第一次使用</a>
     <a href="#scene-1">场景 1：注入新爬虫（.py → 配置）</a>
@@ -135,6 +135,7 @@ tbody tr:nth-child(even){background:var(--card);}
     <a href="#scene-7">场景 7：把另一份配置合并进来（🔀 合并导入）</a>
     <a href="#scene-8">场景 8：管理直播 / 解析 / 广告等其它分区</a>
     <a href="#scene-9">场景 9：命令行批处理（脚本/定时任务）</a>
+    <a href="#scene-10">场景 10：把仓库推到电视 / 盒子（📤 上传）</a>
     <a href="#faq">常见问题</a>
     <a href="#win7">Win7 版怎么来 / 怎么打</a>
     <a href="#backup">备份文件一览</a>
@@ -142,12 +143,12 @@ tbody tr:nth-child(even){background:var(--card);}
   </nav>
 </aside>
 <main>
-  <div class="top-note">本页由 <code>使用方法.md</code> 自动生成 · v1.0.3 —— 侧边栏可直接跳转章节。</div>
+  <div class="top-note">本页由 <code>使用方法.md</code> 自动生成 · v1.1.0 —— 侧边栏可直接跳转章节。</div>
 <h1 id="top">源管家 使用方法</h1>
-<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.0.3</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.0.3</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.0.3.exe</code>（Win10+，Qt6） · <code>源管家 v1.0.3-Win7.exe</code>（Win7，Qt5）</p></blockquote>
+<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.1.0</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.1.0</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.1.0.exe</code>（Win10+，Qt6） · Win7 版<strong>按需构建</strong>，不随每个版本发布（最新为 <code>源管家 v1.0.1-Win7.exe</code>）</p></blockquote>
 <hr>
 <h2 id="first">0. 第一次使用</h2>
-<ol><li>双击 <code>源管家 v&lt;版本&gt;.exe</code>（本版为 <code>源管家 v1.0.3.exe</code>；版本号是三段式 <code>主.次.修订</code>）。</li><li>点「选择…」选中<strong>仓库目录</strong>（里面应有配置文件和 <code>py/</code> 文件夹）。</li><li>配置文件一般留空即可——程序会自动识别（主窗口状态标签显示「已加载 xxx.json · 站点 N 个」即成功；窗口标题为「仓库路径 — 源管家 v&lt;版本&gt;」，版本号在所有标题栏与「ℹ 关于」里都能看到）。</li><li>如果你的配置文件不是自动识别到的那一个：<strong>点「配置文件」框右侧的 ▼</strong>，下拉直接列出仓库目录里的全部候选 JSON（py.json 优先），点选即加载；也可以手动输入文件名（如 <code>12.json</code>）后回车，或点「自动识别」重试。切换仓库目录后下拉候选会自动刷新。</li></ol>
+<ol><li>双击 <code>源管家 v&lt;版本&gt;.exe</code>（本版为 <code>源管家 v1.1.0.exe</code>；版本号是三段式 <code>主.次.修订</code>）。</li><li>点「选择…」选中<strong>仓库目录</strong>（里面应有配置文件和 <code>py/</code> 文件夹）。</li><li>配置文件一般留空即可——程序会自动识别（主窗口状态标签显示「已加载 xxx.json · 站点 N 个」即成功；窗口标题为「仓库路径 — 源管家 v&lt;版本&gt;」，版本号在所有标题栏与「ℹ 关于」里都能看到）。</li><li>如果你的配置文件不是自动识别到的那一个：<strong>点「配置文件」框右侧的 ▼</strong>，下拉直接列出仓库目录里的全部候选 JSON（py.json 优先），点选即加载；也可以手动输入文件名（如 <code>12.json</code>）后回车，或点「自动识别」重试。切换仓库目录后下拉候选会自动刷新。</li></ol>
 <blockquote><p>以后每次启动会自动加载上次的仓库目录，无需重复选择。</p></blockquote>
 <hr>
 <h2 id="scene-1">场景 1：注入新爬虫（.py → 配置）</h2>
@@ -241,6 +242,14 @@ tbody tr:nth-child(even){background:var(--card);}
 <p><strong>铁律：不带 <code>--write</code> 只预览、不写盘。</strong> 建议先预览确认，再加 <code>--write</code>。</p>
 <div class="tw"><table><thead><tr><th>目的</th><th>命令</th></tr></thead><tbody><tr><td>扫描注入</td><td><code>源管家.exe --repo D:\myrepo --scan --write</code></td></tr><tr><td>注入指定文件</td><td><code>源管家.exe --repo D:\myrepo --inject a.py b.py --write</code></td></tr><tr><td>查看站点</td><td><code>源管家.exe --repo D:\myrepo --list</code></td></tr><tr><td>查重 / 去重</td><td><code>--check</code> / <code>--dedup --write</code></td></tr><tr><td>删除（保留 .py）</td><td><code>--del py_xxx --keep-py --write</code></td></tr><tr><td>改字段</td><td><code>--set py_xxx.adult=1 --write</code></td></tr><tr><td>成人标注</td><td><code>--adult-scan --write</code></td></tr><tr><td>短剧检测 / 批量禁用</td><td><code>--duanju-scan</code> / <code>--duanju-scan --write</code></td></tr><tr><td>直播检测 / 批量禁用</td><td><code>--live-scan</code> / <code>--live-scan --write</code></td></tr><tr><td>URL 检测</td><td><code>--check-url</code></td></tr><tr><td>添加直连 CMS 源</td><td><code>--add-cms https://xxx.com/api.php/provide/vod --write</code></td></tr><tr><td>源测活（含直连）</td><td><code>--probe</code>（type 1 走 HTTP 取分类，type 3 走子进程加载 .py）</td></tr><tr><td>禁用 / 启用</td><td><code>--disable py_a py_b --write</code> / <code>--enable py_a --write</code></td></tr><tr><td>本次运行走代理</td><td>任一命令后加 <code>--proxy http://127.0.0.1:7890</code>（全部网络检测 + 源测活都经它）</td></tr><tr><td>只验证代理是否正常</td><td><code>源管家.exe --check-proxy --proxy socks5://127.0.0.1:7891</code>（以能否连到 Google 首页为准）</td></tr></tbody></table></div>
 <hr>
+<h2 id="scene-10">场景 10：把仓库推到电视 / 盒子（📤 上传）</h2>
+<p>前提：电视/盒子是 Android 且已开<strong>「网络调试」</strong>（开发者选项里），电脑上有 <code>adb.exe</code> （放在程序同目录或 <code>platform-tools\adb.exe</code> 里就行；留空会自动查找）。</p>
+<ol><li>打开「🧰 工具箱 → <strong>上传到电视/盒子（ADB）</strong>」；</li><li><strong>设备地址</strong>填盒子 IP（如 <code>192.168.1.9</code>），端口一般 <code>5555</code>，点 <strong>连接并检测</strong>；</li><li><strong>远端目录</strong>默认 <code>/sdcard/</code>，可改成 <code>/sdcard/TVBox/</code>；点 <strong>测试写权限</strong> 确认能写；</li><li>点 <strong>＋ 加入仓库目录</strong> 把整个仓库扫进清单；要传别的配置就点 <strong>＋ 文件…</strong> / <strong>＋ 文件夹…</strong></li></ol>
+<p>（不写死 <code>py.json</code> / <code>py/</code>，仓库之外的配置文件照样能传）；</p>
+<ol><li>清单里逐项勾选（默认全勾），点 <strong>📤 开始上传</strong>；</li><li>结果表逐行看：<strong>✓ 成功 / ⏭ 跳过（远端已一样）/ ✗ 失败（后面写原因）/ ⏹ 取消</strong>。</li></ol>
+<div class="tw"><table><thead><tr><th>情况</th><th>怎么办</th></tr></thead><tbody><tr><td>提示找不到 adb</td><td>点「浏览…」指定 <code>adb.exe</code>，或把它放到程序同目录 / <code>platform-tools\adb.exe</code></td></tr><tr><td>显示 <code>unauthorized</code></td><td>盒子上会弹「允许调试」，点允许；没弹窗就去开发者选项撤销授权后重连</td></tr><tr><td><code>offline</code> / 连接超时</td><td>确认 IP 没变、盒子「网络调试」开着、电脑与盒子同网段；必要时重连</td></tr><tr><td>失败原因「没有写权限」</td><td>远端目录换成 <code>/sdcard/Download/…</code>，别写 <code>/system</code></td></tr><tr><td>只想传配置、不传脚本</td><td>在清单里把 <code>py/</code> 那些行取消勾选（或只「＋ 文件…」加 <code>py.json</code>）</td></tr><tr><td>传完 APP 里没变化</td><td>确认 APP 读的正是你传的那份配置路径，必要时在 APP 里重新加载</td></tr></tbody></table></div>
+<blockquote><p>上传过程<strong>先删远端同名文件再 push</strong>（远端只读属性会挡住覆盖），每个文件传完用 <code>md5sum</code> 核对， 不一致自动重试一次；默认「跳过 MD5 相同的文件」，重复上传很快。传一半点「取消」也不会留下半截文件。</p><p>⚠️ 上传的是<strong>磁盘上的文件</strong>：主窗口里改了但还没点「💾 保存并写入」的内容不会被传上去。</p></blockquote>
+<hr>
 <h2 id="faq">常见问题</h2>
 <p><strong>Q：改坏了怎么回退？</strong> 每次写盘前都会自动备份：<code>py.json.bak.&lt;时间戳&gt;</code>。把配置目录里对应备份改回 <code>py.json</code> 即可。删错的 .py 在 <code>py_trash/</code> 里。</p>
 <p><strong>Q：扫描提示"缺失 .py"但文件明明在？</strong> 多半是 py 文件夹被改名或移动了。先看「资源」列是否显示「已找回」——是则改 api 路径；否则检查配置文件里 api 写的是否是相对路径 <code>./py/xxx.py</code>。注意直连源（type:1）本来就没有本地 .py，「资源」列显示「直连」属正常。</p>
@@ -250,10 +259,10 @@ tbody tr:nth-child(even){background:var(--card);}
 <p><strong>Q：检测会很慢吗？</strong> 文件存在性检测秒级；成人检测取决于 .py 数量和大小（一般几秒~十几秒）；URL 检测最慢（每站要联网探测），建议需要时再手动开始，可暂停。</p>
 <p><strong>Q：会不会执行我的爬虫代码？</strong> 不会。所有 .py 都只当文本读取，程序从不执行任何爬虫代码。</p>
 <p><strong>Q：界面怎么自动变深色了？</strong> 程序<strong>跟随系统深浅色</strong>：在 Windows 10/11 开启深色主题后启动即为深色界面，切回浅色再启动即恢复，无需任何手动设置。 （注：Win7 版用的是 Qt5 渲染，只跟随系统主题，不支持跟随深浅色切换。）</p>
-<p><strong>Q：标题栏里的「v2610041344」是什么？</strong> <strong>版本号</strong>，格式为语义化三段式 <code>主.次.修订</code>（如 <code>v1.0.3</code>）。所有窗体（主窗口、各对话框、提示弹窗）标题栏都带这个后缀，一眼就能确认手上是哪一版。</p>
+<p><strong>Q：标题栏里的「v2610041344」是什么？</strong> <strong>版本号</strong>，格式为语义化三段式 <code>主.次.修订</code>（如 <code>v1.1.0</code>）。所有窗体（主窗口、各对话框、提示弹窗）标题栏都带这个后缀，一眼就能确认手上是哪一版。</p>
 <p><strong>Q：「🧹 剔除失效源」会不会误删我的好源？</strong> 不会。它只认两类<strong>明确失效</strong>信号：① URL 可达性检测判为「不可达」；②「资源」列显示「缺失」。<strong>从没检测过的站点一律不算失效</strong>——如果还没跑过测活 / URL 检测，这个动作等于什么都不做。默认动作是「<strong>禁用</strong>」（随时可用「启用选中」恢复），要真删得在确认框里显式选「删除」，而且只摘配置项、<strong>不删 .py</strong>。</p>
 <p><strong>Q：合并导入会不会覆盖我现有的 .py？</strong> 不会默认覆盖。目标里已有同名文件时：内容相同 → 直接跳过；<strong>内容不同 → 默认改名</strong>（<code>x.py</code> → <code>x_2.py</code>）并把所有指向它的引用（api / jar / 文件内 import / ext 路径）同步改到新名。只有你在逐文件确认框里主动选「覆盖」，才会先备份（<code>backups/companions/</code>）再覆盖。</p>
-<p><strong>Q：Win7 上提示"缺少 xxx.dll"怎么办？</strong> 请用文件名带 <strong><code>-Win7</code> 后缀</strong>的那一份（本版为 <code>源管家 v1.0.3-Win7.exe</code>）。 主程序（Qt6 版，文件名不带后缀）依赖 Python 3.13 / Qt6 的运行库，这两者都要求 Win8 以上，不是打包漏文件。Win7 版走的是 Python 3.9 + Qt5 那一套，才真正支持 Win7；另外确保系统装过 <strong>VC++ 运行库（2015-2019）</strong>。</p>
+<p><strong>Q：Win7 上提示"缺少 xxx.dll"怎么办？</strong> 请用文件名带 <strong><code>-Win7</code> 后缀</strong>的那一份（Win7 版按需构建，最新为 <code>源管家 v1.0.1-Win7.exe</code>）。 主程序（Qt6 版，文件名不带后缀）依赖 Python 3.13 / Qt6 的运行库，这两者都要求 Win8 以上，不是打包漏文件。Win7 版走的是 Python 3.9 + Qt5 那一套，才真正支持 Win7；另外确保系统装过 <strong>VC++ 运行库（2015-2019）</strong>。</p>
 <hr>
 <h2 id="win7">Win7 版怎么来 / 怎么打</h2>
 <p>工程里同一份 <code>injector.py</code> 内含 Qt 绑定兼容层：装得到 PySide6 就走 Qt6，装不到就自动回退 PySide2（Qt5），所以两套 exe 由同一份源码产出。</p>
@@ -264,8 +273,8 @@ tbody tr:nth-child(even){background:var(--card);}
 &lt;py39&gt; build_win7.py
 
 # 产出：源管家 v&lt;版本&gt;-Win7.exe（与 Win10+ 版并存，互不覆盖）
-# 本版产出：源管家 v1.0.3-Win7.exe</code></pre>
-<blockquote><p><strong>关于版本号</strong>：本版起改用<strong>语义化三段式</strong> <code>主版本.次版本.修订号</code>（如 <code>1.0.3</code>），两条流水线识别到该格式直接放行、不再核对日期。 旧「日期 + 时间」<code>YYMMDDHHMM</code> 格式<strong>仍然支持</strong>（此时强制前 6 位等于今天）；节日特别版这类标记串（如 <code>"2026 国庆特别版"</code>）会被识别为非标准版本号， 打印「⚠️ 非标准版本号（节日特别版），跳过日期核对」并继续。切换版本风格只需改 <code>APP_VERSION</code> 一处，其余无需回滚。</p></blockquote>
+# 本版产出：源管家 v1.1.0.exe（Win7 版需专门要求，产出 源管家 v&lt;版本&gt;-Win7.exe）</code></pre>
+<blockquote><p><strong>关于版本号</strong>：本版起改用<strong>语义化三段式</strong> <code>主版本.次版本.修订号</code>（如 <code>1.1.0</code>），两条流水线识别到该格式直接放行、不再核对日期。 旧「日期 + 时间」<code>YYMMDDHHMM</code> 格式<strong>仍然支持</strong>（此时强制前 6 位等于今天）；节日特别版这类标记串（如 <code>"2026 国庆特别版"</code>）会被识别为非标准版本号， 打印「⚠️ 非标准版本号（节日特别版），跳过日期核对」并继续。切换版本风格只需改 <code>APP_VERSION</code> 一处，其余无需回滚。</p></blockquote>
 <p>两条构建流水线的关系：</p>
 <div class="tw"><table><thead><tr><th>脚本</th><th>解释器 / Qt</th><th>产物</th></tr></thead><tbody><tr><td><code>build.py</code></td><td>3.13 / PySide6</td><td><code>源管家 v&lt;版本&gt;.exe</code></td></tr><tr><td><code>build_win7.py</code></td><td>3.9  / PySide2</td><td><code>源管家 v&lt;版本&gt;-Win7.exe</code></td></tr></tbody></table></div>
 <blockquote><p>两条流水线产出的是<strong>同一份 <code>injector.py</code></strong>（内含 Qt 绑定兼容层），功能完全一致；Win7 版用 Qt5 渲染， 不能跟随系统深浅色切换（详见文末 FAQ）。</p></blockquote>

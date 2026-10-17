@@ -294,6 +294,92 @@ class QTableWidget(QWidget):
         return QWidget(self)
 
 
+class QTreeWidgetItem:
+    """工具箱「上传到电视/盒子」页用到的树节点桩（够用即可）。"""
+
+    def __init__(self, texts=None):
+        self._texts = list(texts or [])
+        self._data = {}
+        self._flags = 0
+        self._check = 0
+        self._selected = False
+        self._tips = {}
+
+    def text(self, c):
+        return self._texts[c] if 0 <= c < len(self._texts) else ""
+
+    def setText(self, c, t):
+        while len(self._texts) <= c:
+            self._texts.append("")
+        self._texts[c] = str(t)
+
+    def setData(self, c, role, val):
+        self._data[(c, role)] = val
+
+    def data(self, c, role):
+        return self._data.get((c, role))
+
+    def setFlags(self, f):
+        self._flags = f
+
+    def flags(self):
+        return self._flags
+
+    def setCheckState(self, c, s):
+        self._check = s
+
+    def checkState(self, c):
+        return self._check
+
+    def setToolTip(self, c, t):
+        self._tips[c] = t
+
+    def setSelected(self, v):
+        self._selected = bool(v)
+
+    def isSelected(self):
+        return self._selected
+
+
+class QTreeWidget(QWidget):
+    itemChanged = Signal()
+
+    def __init__(self, *a):
+        super().__init__()
+        self._items = []
+        self._header = _Header()
+
+    def setHeaderLabels(self, labels):
+        self._labels = labels
+
+    def header(self):
+        return self._header
+
+    def setColumnWidth(self, *a):
+        pass
+
+    def setSelectionMode(self, *a):
+        pass
+
+    def addTopLevelItem(self, it):
+        self._items.append(it)
+
+    def topLevelItemCount(self):
+        return len(self._items)
+
+    def topLevelItem(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def indexOfTopLevelItem(self, it):
+        return self._items.index(it) if it in self._items else -1
+
+    def takeTopLevelItem(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def selectedItems(self):
+        return [x for x in self._items if getattr(x, "_selected", False)]
+
+
 class QLineEdit(QWidget):
     textChanged = Signal()
     returnPressed = Signal()
@@ -557,6 +643,10 @@ class Qt:
     NoBrush = 0
     Vertical = 2
     RichText = 1
+    UserRole = 0x0100
+    Checked = 2
+    Unchecked = 0
+    ItemIsUserCheckable = 0x0010
 
 
 class QEvent:
@@ -773,6 +863,7 @@ qtwidgets = _make_mod("PySide6.QtWidgets", {
     "QRadioButton": QRadioButton, "QInputDialog": QInputDialog,
     "QComboBox": QComboBox, "QGridLayout": QGridLayout, "QSizePolicy": QSizePolicy,
     "QTabWidget": QTabWidget,
+    "QTreeWidget": QTreeWidget, "QTreeWidgetItem": QTreeWidgetItem,
 })
 pkg = types.ModuleType("PySide6")
 pkg.QtCore = qtcore

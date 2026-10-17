@@ -219,8 +219,8 @@ ok("「开始」按钮已恢复", all(b.isEnabled() for b in tb._tool_buttons))
 ok("页状态文字已被更新", bool(tb.lbl_status.text()))
 ok("重复触发被拒绝（同一时刻只允许一个任务）",
    getattr(tb, "_run_worker", None) is None)
-ok("六页都有独立进度条",
-   set(tb._page_bars.keys()) == {"cat", "jar", "speed", "net", "plist", "report"},
+ok("七页都有独立进度条（检测 6 + 上传）",
+   set(tb._page_bars.keys()) == {"cat", "jar", "speed", "net", "plist", "report", "push"},
    str(sorted(tb._page_bars.keys())))
 
 print("== 9) 分区管理（lives / rules；本页是工具箱里唯一会写配置的一页）==")

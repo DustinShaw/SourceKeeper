@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "1.0.3"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.1.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
                              # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
@@ -144,6 +144,7 @@ import pyinj_jar       # noqa: F401
 import pyinj_playlist  # noqa: F401
 import pyinj_report    # noqa: F401
 import pyinj_proxy     # noqa: F401
+import pyinj_upload    # noqa: F401
 
 
 
@@ -749,6 +750,7 @@ def run_gui():
             QTabWidget,
             QAbstractItemView, QProgressBar, QMenu, QFrame, QRadioButton,
             QInputDialog, QComboBox, QGridLayout, QSizePolicy,
+            QTreeWidget, QTreeWidgetItem,
         )
         from PySide6.QtGui import (QColor, QFont, QKeySequence, QShortcut,
                                    QDesktopServices)  # Qt6：QShortcut 已移入 QtGui
@@ -767,6 +769,7 @@ def run_gui():
             QTabWidget,
             QAbstractItemView, QProgressBar, QMenu, QFrame, QRadioButton,
             QInputDialog, QComboBox, QGridLayout, QSizePolicy,
+            QTreeWidget, QTreeWidgetItem,
             QShortcut,          # Qt5：QShortcut 属于 QtWidgets
         )
         from PySide2.QtGui import (QColor, QFont, QKeySequence,
@@ -6024,6 +6027,42 @@ def run_gui():
                 return
             self.finished_report.emit(rep)
 
+    class _PushWorker(QThread):
+        """「上传到电视/盒子」后台任务：逐文件 adb push，回传进度与结果行。
+
+        只做传输，不做任何 UI 判断（计划在主线程建好传进来）；
+        取消时置 _stop，upload_plan 会在下一个文件前停下并把剩余标为「已取消」。
+        """
+
+        progress = Signal(int, int, str)   # done, total, 当前文件
+        finished_rows = Signal(list)
+        failed = Signal(str)
+
+        def __init__(self, dialog, adb_path, serial, plan, skip_same=True):
+            super().__init__(dialog)
+            self.dialog = dialog
+            self.adb_path = adb_path
+            self.serial = serial
+            self.plan = list(plan or [])
+            self.skip_same = bool(skip_same)
+            self._stop = False
+
+        def stop(self):
+            self._stop = True
+
+        def run(self):
+            try:
+                adb = pyinj_upload.Adb(self.adb_path, self.serial)
+                rows = pyinj_upload.upload_plan(
+                    adb, self.plan, skip_same=self.skip_same,
+                    progress=lambda d, t, n: self.progress.emit(int(d), int(t), str(n)),
+                    check_cancel=lambda: (self._stop
+                                          or getattr(self.dialog, "_closed", False)))
+            except Exception as ex:
+                self.failed.emit(str(ex))
+                return
+            self.finished_rows.emit(rows)
+
     class _EntryEditDialog(QDialog):
         """分区条目的通用 JSON 编辑器。
 
@@ -6086,11 +6125,15 @@ def run_gui():
             self.sect_text = ""           # 分区管理：当前内存中的配置文本
             self._sect_views = {}         # 分区名 -> {"table":…, "btns":[…]}
             self._sect_rows = {}          # 分区名 -> [(obj, disabled), …]
+            # 上传页（ADB）
+            self._push_worker = None
+            self._push_serial = ""
 
             root = QVBoxLayout(self)
             tip = QLabel(
                 "把「分类识别 / JAR 体检 / 源测速 / 网络诊断 / 直播表转换 / 诊断报告 / "
-                "分区管理」集中在这里。除「分区管理」外均为<b>只读检测</b>，不改动你的配置。")
+                "上传到电视/盒子 / 分区管理」集中在这里。除「分区管理」外均为<b>只读检测</b>，"
+                "不改动你的配置（上传页只读本机文件、只往设备写入）。")
             tip.setTextFormat(Qt.RichText)
             tip.setWordWrap(True)
             root.addWidget(tip)
@@ -6100,7 +6143,8 @@ def run_gui():
             self.page = QComboBox()
             self.page.addItems([
                 "分类识别", "JAR 体检", "源测速", "网络诊断",
-                "直播表转换（TXT ↔ M3U）", "诊断报告导出", "分区管理",
+                "直播表转换（TXT ↔ M3U）", "诊断报告导出",
+                "上传到电视/盒子（ADB）", "分区管理",
             ])
             self.page.currentIndexChanged.connect(self._switch_page)
             top.addWidget(self.page, 1)
@@ -6108,7 +6152,7 @@ def run_gui():
 
             # 各功能页容器（QWidget + 显隐切换）
             self.pages = {}
-            for name in ("cat", "jar", "speed", "net", "plist", "report", "sect"):
+            for name in ("cat", "jar", "speed", "net", "plist", "report", "push", "sect"):
                 w = QWidget()
                 self.pages[name] = w
                 root.addWidget(w, 1)
@@ -6118,6 +6162,7 @@ def run_gui():
             self._build_net(self.pages["net"])
             self._build_plist(self.pages["plist"])
             self._build_report(self.pages["report"])
+            self._build_push(self.pages["push"])
             self._build_sect(self.pages["sect"])
 
             self.lbl_status = QLabel("")
@@ -6270,10 +6315,11 @@ def run_gui():
                     pass
 
         def _switch_page(self, idx):
-            names = ["cat", "jar", "speed", "net", "plist", "report", "sect"]
+            names = ["cat", "jar", "speed", "net", "plist", "report", "push", "sect"]
             for i, n in enumerate(names):
                 self.pages[n].setVisible(i == idx)
-            if idx == len(names) - 1:
+            # 按**页名**判断（不要用 len(names)-1：以后再加页会指错对象）
+            if 0 <= idx < len(names) and names[idx] == "sect":
                 # 切到分区管理时重新读盘：期间主窗口可能已经改过配置
                 self._reload_sections()
 
@@ -6624,6 +6670,400 @@ def run_gui():
             self._status("报告已导出：%s（共 %d 个站点）" % (path, rep["total"]))
             QMessageBox.information(self, "完成", "诊断报告已导出：\n%s" % path)
 
+        # ---- 上传到电视 / 盒子页（ADB）----
+        # 上传单位是**清单**：仓库目录整体扫描（按排除规则过滤）+ 任意自定义文件/文件夹。
+        # 不写死 py.json / py/ —— 即使用户没通过源管家改配置，也能把其它配置传上去。
+        def _push_excludes(self):
+            """排除规则：设置里存的是逗号/换行分隔的 glob；没存过就用内置默认。"""
+            raw = QSettings("PyInjector", "PyInjector").value("upload/excludes", "")
+            if isinstance(raw, str) and raw.strip():
+                parts = raw.replace("\n", ",").split(",")
+                return [x.strip() for x in parts if x.strip()]
+            return list(pyinj_upload.DEFAULT_EXCLUDES)
+
+        def _build_push(self, page):
+            st = QSettings("PyInjector", "PyInjector")
+            v = QVBoxLayout(page)
+            info = QLabel(
+                "通过 ADB 把<b>整个仓库目录</b>推到电视 / 盒子，也可临时加任意文件 / 文件夹"
+                "（不用源管家改过配置也能传其它配置）。默认排除构建产物、备份、版本库等；"
+                "清单可逐项勾选。<b>上传的是磁盘上的文件</b>——主窗口里未保存的修改请先"
+                "「💾 保存并写入」再传。")
+            info.setTextFormat(Qt.RichText)
+            info.setWordWrap(True)
+            v.addWidget(info)
+
+            g = QGridLayout()
+            g.addWidget(QLabel("adb 程序："), 0, 0)
+            self.ed_adb = QLineEdit(str(st.value("upload/adb", "") or ""))
+            self.ed_adb.setPlaceholderText("留空自动查找（PATH / 程序同目录 / platform-tools）")
+            g.addWidget(self.ed_adb, 0, 1, 1, 3)
+            g.addWidget(QPushButton("浏览…", clicked=self._push_pick_adb), 0, 4)
+
+            g.addWidget(QLabel("设备地址："), 1, 0)
+            self.ed_ip = QLineEdit(str(st.value("upload/addr", "") or ""))
+            self.ed_ip.setPlaceholderText("192.168.1.100")
+            g.addWidget(self.ed_ip, 1, 1)
+            g.addWidget(QLabel("端口："), 1, 2)
+            self.sp_port = QSpinBox()
+            self.sp_port.setRange(1, 65535)
+            try:
+                self.sp_port.setValue(int(st.value("upload/port", 5555) or 5555))
+            except Exception:
+                self.sp_port.setValue(5555)
+            g.addWidget(self.sp_port, 1, 3)
+            self.btn_conn = QPushButton("连接并检测", clicked=self._push_connect)
+            g.addWidget(self.btn_conn, 1, 4)
+
+            g.addWidget(QLabel("远端目录："), 2, 0)
+            self.ed_remote = QLineEdit(str(st.value("upload/remote", "") or "/sdcard/"))
+            self.ed_remote.setToolTip("默认 /sdcard/；也可写成 /sdcard/TVBox/ 等任意可写目录")
+            g.addWidget(self.ed_remote, 2, 1, 1, 3)
+            self.btn_wtest = QPushButton("测试写权限", clicked=self._push_test_write)
+            g.addWidget(self.btn_wtest, 2, 4)
+            v.addLayout(g)
+
+            self.lbl_push_dev = QLabel("未连接设备（先填地址，点「连接并检测」）")
+            self.lbl_push_dev.setWordWrap(True)
+            v.addWidget(self.lbl_push_dev)
+
+            self.tree_push = QTreeWidget()
+            self.tree_push.setHeaderLabels(["文件（勾选后上传）", "大小", "远端路径"])
+            self.tree_push.setColumnWidth(0, 340)
+            self.tree_push.setColumnWidth(1, 86)
+            try:
+                self.tree_push.header().setSectionResizeMode(2, QHeaderView.Stretch)
+            except Exception:
+                pass
+            self.tree_push.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            v.addWidget(self.tree_push, 2)
+
+            hb = QHBoxLayout()
+            hb.addWidget(QPushButton("＋ 加入仓库目录", clicked=self._push_add_repo))
+            hb.addWidget(QPushButton("＋ 文件…", clicked=self._push_add_files))
+            hb.addWidget(QPushButton("＋ 文件夹…", clicked=self._push_add_dir))
+            hb.addWidget(QPushButton("移除选中", clicked=self._push_remove))
+            hb.addWidget(QPushButton("全选", clicked=lambda _c=False: self._push_check_all(True)))
+            hb.addWidget(QPushButton("全不选",
+                                     clicked=lambda _c=False: self._push_check_all(False)))
+            hb.addStretch(1)
+            self.chk_skip = QCheckBox("跳过 MD5 相同的文件")
+            self.chk_skip.setChecked(bool(int(st.value("upload/skip_same", 1) or 0)))
+            hb.addWidget(self.chk_skip)
+            v.addLayout(hb)
+
+            self._mk_progress(v, "push")
+
+            hb2 = QHBoxLayout()
+            self.btn_push = QPushButton("📤 开始上传", clicked=self._push_start)
+            hb2.addWidget(self.btn_push)
+            self.btn_push_stop = QPushButton("取消", clicked=self._push_cancel)
+            self.btn_push_stop.setEnabled(False)
+            hb2.addWidget(self.btn_push_stop)
+            hb2.addStretch(1)
+            v.addLayout(hb2)
+
+            self.t_push = self._mk_table(["文件", "结果", "说明"], v)
+            self.ed_remote.textChanged.connect(lambda _t: self._push_refresh_remote())
+
+        # -- 上传页：设置持久化 / 设备 --
+        def _push_save_settings(self):
+            st = QSettings("PyInjector", "PyInjector")
+            st.setValue("upload/adb", self.ed_adb.text().strip())
+            st.setValue("upload/addr", self.ed_ip.text().strip())
+            st.setValue("upload/port", int(self.sp_port.value()))
+            st.setValue("upload/remote", self.ed_remote.text().strip() or "/sdcard/")
+            st.setValue("upload/skip_same", 1 if self.chk_skip.isChecked() else 0)
+
+        def _push_pick_adb(self):
+            p, _f = QFileDialog.getOpenFileName(
+                self, "选择 adb.exe", "", "adb (adb.exe);;可执行文件 (*.exe);;所有文件 (*)")
+            if p:
+                self.ed_adb.setText(p)
+
+        def _push_resolve_adb(self):
+            raw = self.ed_adb.text().strip()
+            if raw and os.path.isfile(raw):
+                p = os.path.abspath(raw)
+            elif raw:
+                p = ""
+            else:
+                p = pyinj_upload.find_adb()
+            if p:
+                self.ed_adb.setText(p)
+            return p
+
+        def _push_set_busy(self, busy):
+            self.btn_push.setEnabled(not busy)
+            self.btn_push_stop.setEnabled(busy)
+            try:
+                self.btn_push.setText("⏳ 上传中…" if busy else "📤 开始上传")
+            except Exception:
+                pass
+            for w in (getattr(self, "btn_conn", None), getattr(self, "btn_wtest", None),
+                      getattr(self, "ed_adb", None), getattr(self, "ed_ip", None),
+                      getattr(self, "sp_port", None), getattr(self, "ed_remote", None)):
+                try:
+                    w.setEnabled(not busy)
+                except Exception:
+                    pass
+
+        def _push_connect(self):
+            adb = self._push_resolve_adb()
+            if not adb:
+                QMessageBox.warning(
+                    self, "找不到 adb",
+                    "没找到 adb.exe。\n\n请点「浏览…」指定，或把 adb.exe 放到：\n"
+                    "· 程序同目录\n· 同目录下的 platform-tools\\adb.exe\n· 系统 PATH 中")
+                return False
+            host = self.ed_ip.text().strip()
+            if not host:
+                QMessageBox.information(self, "提示", "请先填设备地址，例如 192.168.1.100")
+                return False
+            addr = "%s:%d" % (host, int(self.sp_port.value()))
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                a = pyinj_upload.Adb(adb)
+                cr = a.connect(addr)
+                dr = a.devices()
+            finally:
+                QApplication.restoreOverrideCursor()
+            devs = dr.get("devices") or []
+            dev = pyinj_upload.pick_device(devs, prefer=addr)
+            if dev is None:
+                bad = [d for d in devs if d.get("state") != "device"]
+                if bad:
+                    detail = "\n".join("%s：%s" % (d["serial"], d["state"]) for d in bad[:5])
+                    hint = pyinj_upload.explain_adb_error(bad[0]["state"])
+                else:
+                    detail = (cr.get("text") or cr.get("msg") or "").strip()[:300] or "未发现设备"
+                    hint = cr.get("msg") or "确认盒子已开「网络调试」，地址与端口正确"
+                QMessageBox.warning(self, "连接失败", "%s\n\n%s" % (detail, hint))
+                self.lbl_push_dev.setText("未连接设备")
+                self._push_serial = ""
+                return False
+            self._push_serial = dev["serial"]
+            self.lbl_push_dev.setText("已连接：%s（%s）"
+                                      % (dev["serial"], pyinj_upload.describe_device(dev)))
+            self._push_save_settings()
+            self._status("已连接 %s" % dev["serial"])
+            return True
+
+        def _push_ensure(self):
+            """返回可直接用的 Adb（必要时先自动连接一次）。"""
+            adb = self._push_resolve_adb()
+            if not adb:
+                QMessageBox.warning(self, "找不到 adb", "请先指定 adb.exe（或放到程序同目录）。")
+                return None
+            if not self._push_serial:
+                if not self._push_connect():
+                    return None
+                adb = self._push_resolve_adb()
+            return pyinj_upload.Adb(adb, self._push_serial)
+
+        def _push_test_write(self):
+            a = self._push_ensure()
+            if a is None:
+                return
+            remote = self.ed_remote.text().strip() or "/sdcard/"
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                res = a.test_writable(remote)
+            finally:
+                QApplication.restoreOverrideCursor()
+            if res.get("ok"):
+                QMessageBox.information(self, "目录可写", res.get("msg", "目录可写"))
+            else:
+                QMessageBox.warning(self, "目录不可写", res.get("msg", "目录不可写"))
+            self._status(res.get("msg", ""))
+
+        # -- 上传页：清单 --
+        def _push_existing_rels(self):
+            out = set()
+            for i in range(self.tree_push.topLevelItemCount()):
+                d = self.tree_push.topLevelItem(i).data(0, Qt.UserRole) or {}
+                if d.get("rel"):
+                    out.add(str(d["rel"]))
+            return out
+
+        def _push_add_entries(self, entries, note=True):
+            have = self._push_existing_rels()
+            added = dup = 0
+            for e in (entries or []):
+                if not e:
+                    continue
+                rel = str(e.get("rel") or "").strip("/")
+                if not rel or rel in have:
+                    dup += 1
+                    continue
+                node = QTreeWidgetItem([
+                    rel, pyinj_upload.format_size(e.get("size")),
+                    pyinj_upload.norm_remote(self.ed_remote.text(), rel)])
+                node.setData(0, Qt.UserRole, {"local": e.get("local"), "rel": rel,
+                                              "size": e.get("size")})
+                node.setFlags(node.flags() | Qt.ItemIsUserCheckable)
+                node.setCheckState(0, Qt.Checked)
+                node.setToolTip(0, str(e.get("local") or ""))
+                self.tree_push.addTopLevelItem(node)
+                have.add(rel)
+                added += 1
+            if note:
+                self._status("清单新增 %d 个文件（重复跳过 %d）" % (added, dup))
+            return added, dup
+
+        def _push_add_repo(self):
+            root = self.repo_dir or self.base_dir
+            if not root or not os.path.isdir(root):
+                QMessageBox.warning(self, "仓库目录", "当前没有可用的仓库目录，请先在主窗口选择。")
+                return
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                entries = pyinj_upload.scan_repo(root, self._push_excludes())
+            finally:
+                QApplication.restoreOverrideCursor()
+            n, dup = self._push_add_entries(entries, note=False)
+            self._status("已从仓库目录加入 %d 个文件（重复 %d）：%s" % (n, dup, root))
+
+        def _push_add_files(self):
+            paths, _f = QFileDialog.getOpenFileNames(self, "选择要上传的文件")
+            items = []
+            for p in paths or []:
+                e = pyinj_upload.custom_file(p)
+                if e:
+                    items.append(e)
+            if items:
+                self._push_add_entries(items)
+
+        def _push_add_dir(self):
+            d = QFileDialog.getExistingDirectory(self, "选择要上传的文件夹")
+            if not d:
+                return
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                items = pyinj_upload.custom_dir(d, self._push_excludes())
+            finally:
+                QApplication.restoreOverrideCursor()
+            n, dup = self._push_add_entries(items, note=False)
+            self._status("已从「%s」加入 %d 个文件（重复 %d）"
+                         % (os.path.basename(d.rstrip("\\/")), n, dup))
+
+        def _push_remove(self):
+            rows = self.tree_push.selectedItems()
+            if not rows:
+                self._status("先在清单里选中要移除的行（可按住 Ctrl / Shift 多选）。")
+                return
+            for it in rows:
+                idx = self.tree_push.indexOfTopLevelItem(it)
+                if idx >= 0:
+                    self.tree_push.takeTopLevelItem(idx)
+            self._status("已移除 %d 行" % len(rows))
+
+        def _push_check_all(self, state):
+            for i in range(self.tree_push.topLevelItemCount()):
+                self.tree_push.topLevelItem(i).setCheckState(
+                    0, Qt.Checked if state else Qt.Unchecked)
+
+        def _push_refresh_remote(self):
+            base = self.ed_remote.text().strip() or "/sdcard/"
+            for i in range(self.tree_push.topLevelItemCount()):
+                it = self.tree_push.topLevelItem(i)
+                d = it.data(0, Qt.UserRole) or {}
+                it.setText(2, pyinj_upload.norm_remote(base, d.get("rel", "")))
+
+        def _push_selected(self):
+            out = []
+            for i in range(self.tree_push.topLevelItemCount()):
+                it = self.tree_push.topLevelItem(i)
+                if it.checkState(0) != Qt.Checked:
+                    continue
+                d = dict(it.data(0, Qt.UserRole) or {})
+                if d.get("local"):
+                    out.append(d)
+            return out
+
+        # -- 上传页：执行 --
+        def _push_start(self):
+            if self._push_worker is not None:
+                QMessageBox.information(self, "提示", "正在上传，请稍候…")
+                return
+            items = self._push_selected()
+            if not items:
+                self._progress_fail("push", "清单为空：先「＋ 加入仓库目录」或「＋ 文件…」。")
+                QMessageBox.information(self, "提示",
+                                        "清单里没有勾选任何文件。\n先点「＋ 加入仓库目录」"
+                                        "或「＋ 文件…」把要传的文件加进来。")
+                return
+            a = self._push_ensure()
+            if a is None:
+                return
+            base = self.ed_remote.text().strip() or "/sdcard/"
+            plan = pyinj_upload.build_plan(items, base)
+            if not plan:
+                self._progress_fail("push", "清单为空。")
+                return
+            self._push_save_settings()
+            self.t_push.setRowCount(0)
+            self._push_set_busy(True)
+            self._progress_start("push", len(plan), "0 / %d" % len(plan))
+            w = _PushWorker(self, a.adb_path, a.serial, plan, self.chk_skip.isChecked())
+            self._push_worker = w
+
+            def _prog(d, t, n):
+                self._set_progress("push", d, t, n)
+
+            def _done(rows):
+                try:
+                    self._push_fill(rows)
+                finally:
+                    self._finish_push()
+
+            def _fail(msg):
+                self._progress_fail("push", "上传异常：%s" % msg)
+                QMessageBox.critical(self, "上传失败", str(msg))
+                self._finish_push()
+
+            w.progress.connect(_prog)
+            w.finished_rows.connect(_done)
+            w.failed.connect(_fail)
+            w.finished.connect(w.deleteLater)
+            w.start()
+
+        def _finish_push(self):
+            self._push_worker = None
+            self._push_set_busy(False)
+
+        def _push_cancel(self):
+            w = self._push_worker
+            if w is not None:
+                w.stop()
+                self.btn_push_stop.setEnabled(False)
+                self._status("正在取消…（当前文件传完就停，已传文件保留）")
+
+        def _push_fill(self, rows):
+            t = self.t_push
+            t.setRowCount(len(rows))
+            colors = {"ok": "#2e7d32", "fail": "#c62828",
+                      "skip": "#6b7280", "cancel": "#6b7280"}
+            for i, r in enumerate(rows):
+                vals = (r.get("rel", ""),
+                        pyinj_upload.STATUS_TEXT.get(r.get("status"), str(r.get("status") or "")),
+                        r.get("msg", ""))
+                for c, val in enumerate(vals):
+                    it = QTableWidgetItem(str(val))
+                    it.setToolTip(str(r.get("remote", "")))
+                    col = colors.get(r.get("status"))
+                    if col and c == 1:
+                        try:
+                            it.setForeground(QColor(col))
+                        except Exception:
+                            pass
+                    t.setItem(i, c, it)
+            s = pyinj_upload.summarize(rows)
+            txt = "上传完成：成功 %d · 跳过 %d · 失败 %d%s" % (
+                s["ok"], s["skip"], s["fail"],
+                ("· 已取消 %d" % s["cancel"]) if s["cancel"] else "")
+            self._progress_done("push", txt, "完成")
+
         # ---- 分区管理页：lives / parses / ads / rules / flags / ijk ----
         # 说明：这是工具箱里**唯一会写配置**的一页（其余都是只读检测）。
         # 每次写入前自动备份到配置目录的 backups/，写完立刻把新文本同步回主窗口，
@@ -6873,6 +7313,13 @@ def run_gui():
             try:
                 if self._run_worker is not None:
                     self._run_worker.stop()
+            except Exception:
+                pass
+            try:
+                if self._push_worker is not None:
+                    self._push_worker.stop()
+                    # 最多等 2 秒（当前文件传完就停）；不等太久，避免关窗像卡死
+                    self._push_worker.wait(2000)
             except Exception:
                 pass
             try:
