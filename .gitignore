@@ -79,12 +79,22 @@ diag_adult.py
 # 测试临时抓取目录（抓包响应 / cookie / token / session，含敏感，不入仓库）
 tests/tmp/
 
-# 一次性开发探测/调试脚本（probe_*/debug_*/analyze_*，部分内嵌 cookie，真实单测不依赖）
-tests/probe_*.py
-tests/debug_*.py
-tests/analyze_*.py
+# 一次性开发探测/调试脚本（部分内嵌 cookie，且写死本机绝对路径）
+# 注意：扩展名不限 —— .py / .cjs / .js 全部排除
+# 2026-10-20 补漏：此前只写 *.py，漏掉 63 个 capture_*.cjs / probe_*.cjs / kwjs\*.js
+tests/probe_*
+tests/debug_*
+tests/analyze_*
+tests/capture_*
+tests/parse_*.cjs
 # 关键词 JS 模糊测试工具（一次性生成/比对脚本，内含另一台机器的绝对路径）
-tests/kwjs/*.py
+tests/kwjs/
 # 模糊测试生成的用例/输出（非源码，体积大且含本机路径）
 tests/kwjs/fuzz_cases.json
 tests/kwjs/fuzz_js_out.json
+# 抓包落地的响应样本与页面快照（含 cookie / token / session，不入仓库）
+tests/*.html
+tests/*.txt
+# 前端资源抓取产物（第三方站点 JS 包，体积大且非本项目源码）
+tests/q91js/
+tests/yytjs/
