@@ -63,7 +63,7 @@
 
 | 文件 | 适用系统 |
 | --- | --- |
-| `源管家 v1.1.0.exe` | Windows 10+（Qt6） |
+| `源管家 v1.2.0.exe` | Windows 10+（Qt6） |
 | `源管家 v1.0.1-Win7.exe` | Windows 7（Qt5，按需构建，不随每个版本发布） |
 
 ## 🚀 快速开始
@@ -125,7 +125,7 @@ python build.py         # 标准版（需要 PySide6）
 python build_win7.py    # Win7 版（需要 PySide2）
 ```
 
-版本号统一在 `injector.py` 顶部 `APP_VERSION` 定义，采用语义化三段式 `major.minor.patch`（如 `v1.1.0`）；构建脚本据此命名产物并做一致性核对，同时输出两条链路的 exe。
+版本号统一在 `injector.py` 顶部 `APP_VERSION` 定义，采用语义化三段式 `major.minor.patch`（如 `v1.2.0`）；构建脚本据此命名产物并做一致性核对，同时输出两条链路的 exe。
 
 ## 📄 许可证
 

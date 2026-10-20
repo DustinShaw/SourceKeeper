@@ -114,7 +114,7 @@ tbody tr:nth-child(even){background:var(--card);}
 <div id="mask"></div>
 <div class="wrap">
 <aside>
-  <div class="brand">源管家 使用方法<small>v1.1.0</small></div>
+  <div class="brand">源管家 使用方法<small>v1.2.0</small></div>
   <nav>
     <a href="#first">0. 第一次使用</a>
     <a href="#scene-1">场景 1：注入新爬虫（.py → 配置）</a>
@@ -143,18 +143,18 @@ tbody tr:nth-child(even){background:var(--card);}
   </nav>
 </aside>
 <main>
-  <div class="top-note">本页由 <code>使用方法.md</code> 自动生成 · v1.1.0 —— 侧边栏可直接跳转章节。</div>
+  <div class="top-note">本页由 <code>使用方法.md</code> 自动生成 · v1.2.0 —— 侧边栏可直接跳转章节。</div>
 <h1 id="top">源管家 使用方法</h1>
-<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.1.0</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.1.0</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.1.0.exe</code>（Win10+，Qt6） · Win7 版<strong>按需构建</strong>，不随每个版本发布（最新为 <code>源管家 v1.0.1-Win7.exe</code>）</p></blockquote>
+<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.2.0</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.2.0</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.2.0.exe</code>（Win10+，Qt6） · Win7 版<strong>按需构建</strong>，不随每个版本发布（最新为 <code>源管家 v1.0.1-Win7.exe</code>）</p></blockquote>
 <hr>
 <h2 id="first">0. 第一次使用</h2>
-<ol><li>双击 <code>源管家 v&lt;版本&gt;.exe</code>（本版为 <code>源管家 v1.1.0.exe</code>；版本号是三段式 <code>主.次.修订</code>）。</li><li>点「选择…」选中<strong>仓库目录</strong>（里面应有配置文件和 <code>py/</code> 文件夹）。</li><li>配置文件一般留空即可——程序会自动识别（主窗口状态标签显示「已加载 xxx.json · 站点 N 个」即成功；窗口标题为「仓库路径 — 源管家 v&lt;版本&gt;」，版本号在所有标题栏与「ℹ 关于」里都能看到）。</li><li>如果你的配置文件不是自动识别到的那一个：<strong>点「配置文件」框右侧的 ▼</strong>，下拉直接列出仓库目录里的全部候选 JSON（py.json 优先），点选即加载；也可以手动输入文件名（如 <code>12.json</code>）后回车，或点「自动识别」重试。切换仓库目录后下拉候选会自动刷新。</li></ol>
+<ol><li>双击 <code>源管家 v&lt;版本&gt;.exe</code>（本版为 <code>源管家 v1.2.0.exe</code>；版本号是三段式 <code>主.次.修订</code>）。</li><li>点「选择…」选中<strong>仓库目录</strong>（里面应有配置文件和 <code>py/</code> 文件夹）。</li><li>配置文件一般留空即可——程序会自动识别（主窗口状态标签显示「已加载 xxx.json · 站点 N 个」即成功；窗口标题为「仓库路径 — 源管家 v&lt;版本&gt;」，版本号在所有标题栏与「ℹ 关于」里都能看到）。</li><li>如果你的配置文件不是自动识别到的那一个：<strong>点「配置文件」框右侧的 ▼</strong>，下拉直接列出仓库目录里的全部候选 JSON（py.json 优先），点选即加载；也可以手动输入文件名（如 <code>12.json</code>）后回车，或点「自动识别」重试。切换仓库目录后下拉候选会自动刷新。</li></ol>
 <blockquote><p>以后每次启动会自动加载上次的仓库目录，无需重复选择。</p></blockquote>
 <hr>
 <h2 id="scene-1">场景 1：注入新爬虫（.py → 配置）</h2>
 <h3 id="sec">注入一个/几个文件</h3>
 <ol><li>点「📄 注入文件」，在文件框里<strong>可多选</strong>；也可以直接把 .py 文件<strong>拖进主窗口</strong>完成注入。</li><li>选中的文件出现在下方「待注入列表」（列表空着时会显示操作引导，告诉你这三种加法；双击列表项可改 key / name）。</li><li>看情况调整「全局开关」（可筛选 / 速搜 / 可搜索）。type 不用管——注入 <code>.py</code> 时已按标准规则自动推断为 <code>3</code>（Spider）；开关里的 type 只在条目自身没有 type 时才兜底，不会覆盖已有站点的 type。</li><li>点「💾 写入配置」→ 完成（自动备份原配置）。</li></ol>
-<ul><li>文件在仓库外？勾选「仓库外文件复制到 py/」，程序会先复制再登记。</li><li>缺 <code>class Spider</code> 的文件会被跳过并在日志里说明。</li></ul>
+<ul><li>文件在仓库外？勾选「仓库外文件复制到 py/」，程序会先复制再登记。</li><li>若 <code>py/</code> 里<strong>已有同名脚本</strong>：内容完全相同 → 直接复用（不重复拷贝）；内容不同 → <strong>自动改名 <code>x_2.py</code>（再冲突则 <code>x_3</code>）并让条目指向新名</strong>，<strong>绝不覆盖你已有的脚本</strong>。</li><li>缺 <code>class Spider</code> 的文件会被跳过并在日志里说明。</li><li><strong>依赖会跟着一起进仓库</strong>：若主 .py 里 <code>import</code> / <code>require</code> 了同目录的其它 <code>.py</code>、<code>.js</code>、<code>.drpy</code>，注入（或合并导入）时会一并搬进 <code>py/</code> 并改写成相对引用——配置上传到电视后影视仓照样找得到全部依赖，源不会失效。遇到同名但内容不同的文件会自动改名 <code>x_2</code> 并同步改写主文件里的引用，<strong>不会覆盖你已有的脚本</strong>。日志里会列出搬了哪些文件。</li></ul>
 <h3 id="py">批量注入 py/ 目录里所有未注册的</h3>
 <ol><li>点「🔍 扫描目录」。</li><li>扫描结果直接进待注入列表；同时日志会<strong>反向校验</strong>已注册条目的 .py 是否还在：</li><li><code>✗ 缺失 .py：key（api）对应文件不存在</code> → 见场景 5</li><li><code>✓ 已注册 N 个站点的 .py 文件均存在</code> → 一切正常</li><li>点「💾 写入配置」。</li></ol>
 <blockquote><p>写入前程序自动按 key / api 查重，重复的不会重复登记。</p></blockquote>
@@ -259,7 +259,7 @@ tbody tr:nth-child(even){background:var(--card);}
 <p><strong>Q：检测会很慢吗？</strong> 文件存在性检测秒级；成人检测取决于 .py 数量和大小（一般几秒~十几秒）；URL 检测最慢（每站要联网探测），建议需要时再手动开始，可暂停。</p>
 <p><strong>Q：会不会执行我的爬虫代码？</strong> 不会。所有 .py 都只当文本读取，程序从不执行任何爬虫代码。</p>
 <p><strong>Q：界面怎么自动变深色了？</strong> 程序<strong>跟随系统深浅色</strong>：在 Windows 10/11 开启深色主题后启动即为深色界面，切回浅色再启动即恢复，无需任何手动设置。 （注：Win7 版用的是 Qt5 渲染，只跟随系统主题，不支持跟随深浅色切换。）</p>
-<p><strong>Q：标题栏里的「v2610041344」是什么？</strong> <strong>版本号</strong>，格式为语义化三段式 <code>主.次.修订</code>（如 <code>v1.1.0</code>）。所有窗体（主窗口、各对话框、提示弹窗）标题栏都带这个后缀，一眼就能确认手上是哪一版。</p>
+<p><strong>Q：标题栏里的「v2610041344」是什么？</strong> <strong>版本号</strong>，格式为语义化三段式 <code>主.次.修订</code>（如 <code>v1.2.0</code>）。所有窗体（主窗口、各对话框、提示弹窗）标题栏都带这个后缀，一眼就能确认手上是哪一版。</p>
 <p><strong>Q：「🧹 剔除失效源」会不会误删我的好源？</strong> 不会。它只认两类<strong>明确失效</strong>信号：① URL 可达性检测判为「不可达」；②「资源」列显示「缺失」。<strong>从没检测过的站点一律不算失效</strong>——如果还没跑过测活 / URL 检测，这个动作等于什么都不做。默认动作是「<strong>禁用</strong>」（随时可用「启用选中」恢复），要真删得在确认框里显式选「删除」，而且只摘配置项、<strong>不删 .py</strong>。</p>
 <p><strong>Q：合并导入会不会覆盖我现有的 .py？</strong> 不会默认覆盖。目标里已有同名文件时：内容相同 → 直接跳过；<strong>内容不同 → 默认改名</strong>（<code>x.py</code> → <code>x_2.py</code>）并把所有指向它的引用（api / jar / 文件内 import / ext 路径）同步改到新名。只有你在逐文件确认框里主动选「覆盖」，才会先备份（<code>backups/companions/</code>）再覆盖。</p>
 <p><strong>Q：Win7 上提示"缺少 xxx.dll"怎么办？</strong> 请用文件名带 <strong><code>-Win7</code> 后缀</strong>的那一份（Win7 版按需构建，最新为 <code>源管家 v1.0.1-Win7.exe</code>）。 主程序（Qt6 版，文件名不带后缀）依赖 Python 3.13 / Qt6 的运行库，这两者都要求 Win8 以上，不是打包漏文件。Win7 版走的是 Python 3.9 + Qt5 那一套，才真正支持 Win7；另外确保系统装过 <strong>VC++ 运行库（2015-2019）</strong>。</p>
@@ -273,8 +273,8 @@ tbody tr:nth-child(even){background:var(--card);}
 &lt;py39&gt; build_win7.py
 
 # 产出：源管家 v&lt;版本&gt;-Win7.exe（与 Win10+ 版并存，互不覆盖）
-# 本版产出：源管家 v1.1.0.exe（Win7 版需专门要求，产出 源管家 v&lt;版本&gt;-Win7.exe）</code></pre>
-<blockquote><p><strong>关于版本号</strong>：本版起改用<strong>语义化三段式</strong> <code>主版本.次版本.修订号</code>（如 <code>1.1.0</code>），两条流水线识别到该格式直接放行、不再核对日期。 旧「日期 + 时间」<code>YYMMDDHHMM</code> 格式<strong>仍然支持</strong>（此时强制前 6 位等于今天）；节日特别版这类标记串（如 <code>"2026 国庆特别版"</code>）会被识别为非标准版本号， 打印「⚠️ 非标准版本号（节日特别版），跳过日期核对」并继续。切换版本风格只需改 <code>APP_VERSION</code> 一处，其余无需回滚。</p></blockquote>
+# 本版产出：源管家 v1.2.0.exe（Win7 版需专门要求，产出 源管家 v&lt;版本&gt;-Win7.exe）</code></pre>
+<blockquote><p><strong>关于版本号</strong>：本版起改用<strong>语义化三段式</strong> <code>主版本.次版本.修订号</code>（如 <code>1.2.0</code>），两条流水线识别到该格式直接放行、不再核对日期。 旧「日期 + 时间」<code>YYMMDDHHMM</code> 格式<strong>仍然支持</strong>（此时强制前 6 位等于今天）；节日特别版这类标记串（如 <code>"2026 国庆特别版"</code>）会被识别为非标准版本号， 打印「⚠️ 非标准版本号（节日特别版），跳过日期核对」并继续。切换版本风格只需改 <code>APP_VERSION</code> 一处，其余无需回滚。</p></blockquote>
 <p>两条构建流水线的关系：</p>
 <div class="tw"><table><thead><tr><th>脚本</th><th>解释器 / Qt</th><th>产物</th></tr></thead><tbody><tr><td><code>build.py</code></td><td>3.13 / PySide6</td><td><code>源管家 v&lt;版本&gt;.exe</code></td></tr><tr><td><code>build_win7.py</code></td><td>3.9  / PySide2</td><td><code>源管家 v&lt;版本&gt;-Win7.exe</code></td></tr></tbody></table></div>
 <blockquote><p>两条流水线产出的是<strong>同一份 <code>injector.py</code></strong>（内含 Qt 绑定兼容层），功能完全一致；Win7 版用 Qt5 渲染， 不能跟随系统深浅色切换（详见文末 FAQ）。</p></blockquote>

@@ -367,6 +367,30 @@ def load_repo(repo_dir, cfg_name=CONFIG_NAME):
     return raw, sites, existing_keys, existing_apis
 
 
+def _pick_free_py_name(py_dir, base, src_path):
+    """在 py_dir 下为 base 挑一个不覆盖既有文件的落点。
+
+    策略与伴生文件保持一致（见 _propose_rel）：
+      · 目标不存在            → 直接用 base；
+      · 目标存在但内容相同    → 复用（不重复拷贝、不改名）；
+      · 目标存在且内容不同    → 改名 base → base_2 → base_3 …（返回新名）。
+
+    返回 (最终文件名, 是否需要拷贝)。同名不同内容时**绝不覆盖用户已有脚本**。
+    """
+    dst = os.path.join(py_dir, base)
+    if not os.path.exists(dst):
+        return base, True
+    if _same_content(_read_bytes(src_path), _read_bytes(dst)):
+        return base, False                      # 内容一致：复用即可
+    stem, ext = os.path.splitext(base)
+    i = 2
+    while True:
+        cand = "%s_%d%s" % (stem, i, ext)
+        if not os.path.exists(os.path.join(py_dir, cand)):
+            return cand, True
+        i += 1
+
+
 def make_entry(py_path, base_dir, copy_into_py):
     """根据 .py 文件生成一条 site 条目。base_dir 为基准目录（配置文件所在目录）。"""
     base = os.path.basename(py_path)
@@ -382,12 +406,18 @@ def make_entry(py_path, base_dir, copy_into_py):
         if not api.startswith("./"):
             api = "./" + api
     else:
-        api = "./py/" + base
         if copy_into_py:
             os.makedirs(py_dir, exist_ok=True)
-            shutil.copy2(py_path, os.path.join(py_dir, base))
+            # 同名保护：内容相同→复用；内容不同→改名 _2，绝不覆盖用户已有脚本
+            final_base, need_copy = _pick_free_py_name(py_dir, base, py_path)
+            if need_copy:
+                shutil.copy2(py_path, os.path.join(py_dir, final_base))
+            base = final_base
+        api = "./py/" + base
     return {
-        "file": py_path,
+        # file 必须存「可移植的相对路径」（与 api 一致，指向 py/ 下的副本），
+        # 不能存导入前的绝对源路径——否则 py.json 上传到电视后影视仓找不到脚本。
+        "file": api,
         "key": "py_" + name_py,
         "name": display + "┃PY",
         "api": api,
@@ -448,19 +478,113 @@ def make_entry_from_api(api, name=None, type_hint=1,
 
 
 def collect_from_files(files, base_dir, copy_into_py, existing_keys, existing_apis):
-    """从文件列表收集可注入条目。返回 (entries, logs)。"""
+    """从文件列表收集可注入条目。返回 (entries, logs)。
+
+    「仓库外文件复制到 py/」时，除了主 .py，还会把它 import/require 的伴生 py/js
+    一并搬到仓库并保持相对引用（否则上传电视后依赖缺失、源直接失效）。"""
     entries, logs = [], []
+    base_abs = os.path.abspath(base_dir)
     for fp in files:
         if not has_spider_class(fp):
             logs.append(("warn", "跳过（未定义 class Spider）：%s" % os.path.basename(fp)))
             continue
         ent = make_entry(fp, base_dir, copy_into_py)
+        # ---- 伴生文件落地：把主 .py 依赖的 py/js/.drpy 也搬进仓库（相对引用）----
+        try:
+            outside = not os.path.abspath(fp).startswith(base_abs + os.sep)
+            if outside and copy_into_py:
+                st = land_injected_companions(fp, base_dir, ent, ent.get("api"))
+                moved = len(st.get("copied") or []) + len(st.get("renamed") or [])
+                if moved:
+                    logs.append(("ok", "已搬运 %d 个伴生文件 → %s" % (moved, ent.get("api"))))
+                if st.get("missing_src"):
+                    logs.append(("warn", "%s 的伴生文件在源目录找不到（需手动补）：%s"
+                                 % (os.path.basename(fp),
+                                    "、".join(st["missing_src"][:6]))))
+            elif outside and not copy_into_py:
+                logs.append(("err", "未复制到 py/（已关闭复制选项），上传电视后会失效：%s"
+                             % ent.get("api")))
+        except Exception as ex:
+            logs.append(("warn", "伴生文件搬运失败：%s（%s）" % (ent.get("api"), ex)))
         if ent["key"] in existing_keys or any(p["key"] == ent["key"] for p in entries):
             logs.append(("warn", "跳过（key 重复）：%s → %s" % (ent["api"], ent["key"])))
             continue
         entries.append(ent)
         logs.append(("ok", "已加入：%s  (name=%s)" % (ent["api"], ent["name"])))
     return entries, logs
+
+
+def land_injected_companions(src_py, base_dir, entry, main_rel=None, decisions=None):
+    """「注入文件」时把 spider 依赖的伴生文件（import 的 .py / require 的 .js/.drpy）
+    一并搬到仓库目录并保持相对引用——否则 py.json 上传电视后这些依赖缺失、源直接失效。
+
+    实现直接复用合并链路同一套机制（_plan_companions / _copy_from_plan）：
+      · 以 src_py 所在目录为「源根」，按仓库相对路径镜像取文件（py/ 前缀映射回源根）；
+      · 内容级冲突检测：目标有同名但内容不同 → 默认改名 py/x.py→py/x_2.py，
+        并同步改写 entry 的 api/jar/ext 与 file（保持 file==api）以及文件内 import/require；
+      · 递归深挖同伴文件（封顶 MAX_DEEP_DEPTH 层）；
+      · 非 UTF-8 文件不改写（避免写坏），仅记录 ref_skipped_encoding。
+    返回 stats（copied/renamed/missing_src/... + rename_map）。
+    """
+    stats = {"copied": [], "skipped": [], "missing_src": [], "renamed": [],
+             "conflict_skipped": [], "backed_up": [], "ref_skipped_encoding": [],
+             "via_mirror": [], "rename_map": {}}
+    if not entry or not base_dir:
+        return stats
+    src_abs = os.path.abspath(src_py)
+    src_dir = os.path.dirname(src_abs)
+    target = os.path.abspath(base_dir)
+    if not main_rel:
+        main_rel = str(entry.get("api") or "")
+    main_rel = str(main_rel).replace("\\", "/")
+    if main_rel.startswith("./"):
+        main_rel = main_rel[2:]
+    if not main_rel:
+        return stats
+    base_prefix = os.path.dirname(main_rel)      # 如 "py"
+
+    def _src_for(rel):
+        """仓库相对 rel → 源侧绝对路径（按 main 所在目录作镜像根）。"""
+        rr = str(rel).replace("\\", "/")
+        try:
+            rel_to_base = os.path.relpath(rr, base_prefix) if base_prefix else rr
+        except Exception:
+            return ""
+        return os.path.normpath(os.path.join(src_dir, rel_to_base))
+
+    def _fetch(rel, src_ref):
+        return _read_bytes(src_ref)
+
+    def _deep(text, rel):
+        return _local_deep_refs(text, rel, exists_fn=lambda r: os.path.isfile(_src_for(r)))
+
+    cands = [(main_rel, "text", src_abs)]
+    try:
+        plan = _plan_companions(target, cands, _fetch, _deep, _src_for)
+    except Exception:
+        return stats
+    rename_map = _resolve_rename_map_from_plan(plan, decisions)
+    stats = _copy_from_plan(plan, target, decisions, _src_for)
+    stats["rename_map"] = rename_map
+    if rename_map:
+        # 主文件可能因「内容相同」被 _copy_from_plan 跳过 → 单独补一次其内部引用改写
+        dst_main = os.path.join(target, main_rel.replace("/", os.sep))
+        txt = _decode_utf8_or_none(_read_bytes(dst_main))
+        if txt is not None:
+            try:
+                new_txt = _rewrite_refs(txt, main_rel, rename_map)
+            except Exception:
+                new_txt = txt
+            if new_txt != txt:
+                try:
+                    with open(dst_main, "wb") as fh:
+                        fh.write(new_txt.encode("utf-8"))
+                except Exception:
+                    pass
+        _apply_rename_to_entry(entry, rename_map)
+        if entry.get("api"):
+            entry["file"] = entry["api"]        # 改名后保持 file 与 api 一致
+    return stats
 
 
 def collect_from_scan(base_dir, existing_keys, existing_apis):
@@ -2992,16 +3116,25 @@ def copy_companions(src_repo_dir, target_repo_dir, *entry_lists, plan=None, deci
 
 def _rebase_entry(entry, src_repo_dir):
     """若条目的 api/jar 是源仓内的绝对路径，重写为目标仓相对路径（./...），
-    使合并后的配置在新仓库里能正确解析。无法 rebase 的（跨盘/系统路径）原样保留。"""
-    if not src_repo_dir:
-        return entry
+    使合并后的配置在新仓库里能正确解析。无法 rebase 的（跨盘/系统路径）原样保留。
+
+    另：`file` 字段必须是可移植的本地相对路径。历史 bug 会把它写成导入前的绝对
+    源路径（上传电视后失效），这里发现绝对路径/URL 时对齐 api 或直接丢弃。"""
     e = dict(entry)
-    for f in ("api", "jar"):
-        v = str(e.get(f) or "").strip()
-        if v and os.path.isabs(v) and not v.startswith("http") and "://" not in v:
-            rel = _rel_under(src_repo_dir, v)
-            if rel:
-                e[f] = "./" + rel.replace(os.sep, "/")
+    if src_repo_dir:
+        for f in ("api", "jar"):
+            v = str(e.get(f) or "").strip()
+            if v and os.path.isabs(v) and not v.startswith("http") and "://" not in v:
+                rel = _rel_under(src_repo_dir, v)
+                if rel:
+                    e[f] = "./" + rel.replace(os.sep, "/")
+    fv = str(e.get("file") or "").strip()
+    if fv and ("://" in fv or _looks_abs_path(fv)):
+        api_v = str(e.get("api") or "").strip()
+        if api_v and "://" not in api_v and not _looks_abs_path(api_v):
+            e["file"] = api_v
+        else:
+            e.pop("file", None)
     return e
 
 

@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "1.1.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.2.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
                              # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）

@@ -124,5 +124,37 @@ try:
 except Exception as ex:
     ok("make_entry 执行", False, ex)
 
+
+# -------------------------------------------------- make_entry: file 必须可移植
+print("== make_entry（file 字段必须相对 ./py/、等于 api，不得写绝对源路径）==")
+def _mk_outside(base, copy):
+    """在 base 之外造一个 .py，模拟从别处导入。"""
+    src = tempfile.mkdtemp(prefix="src_")
+    pyf = os.path.join(src, "outer.py")
+    open(pyf, "w", encoding="utf-8").write("class Spider:\n    pass\n")
+    return C.make_entry(pyf, base, copy)
+
+# 1) 仓库外的脚本，copy_into_py=True：应复制进 py/ 且 file==api 为相对路径
+try:
+    ent = _mk_outside(tempfile.mkdtemp(), True)
+    ok("外部脚本 copy=True：file 以 ./py/ 开头", str(ent.get("file", "")).startswith("./py/"), ent.get("file"))
+    ok("外部脚本 copy=True：file == api", ent.get("file") == ent.get("api"), (ent.get("file"), ent.get("api")))
+    ok("外部脚本 copy=True：file 不是绝对路径", not os.path.isabs(ent.get("file", "")), ent.get("file"))
+except Exception as ex:
+    ok("外部脚本 copy=True：file 相对化", False, ex)
+
+# 2) 已在 py/ 内的脚本（scan 场景，copy_into_py=False）：file 同样相对且等于 api
+try:
+    base = tempfile.mkdtemp()
+    pyd = os.path.join(base, "py")
+    os.makedirs(pyd, exist_ok=True)
+    inpy = os.path.join(pyd, "inner.py")
+    open(inpy, "w", encoding="utf-8").write("class Spider:\n    pass\n")
+    ent = C.make_entry(inpy, base, False)
+    ok("py/ 内脚本：file == api", ent.get("file") == ent.get("api"), (ent.get("file"), ent.get("api")))
+    ok("py/ 内脚本：file 以 ./py/ 开头", str(ent.get("file", "")).startswith("./py/"), ent.get("file"))
+except Exception as ex:
+    ok("py/ 内脚本：file 相对化", False, ex)
+
 print("\n\u7ed3\u679c\uff1a%d \u901a\u8fc7, %d \u5931\u8d25" % (passed, failed))
 sys.exit(1 if failed else 0)

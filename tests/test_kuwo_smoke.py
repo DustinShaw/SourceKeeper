@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """KuwoMV.py 本地全链路冒烟：home/category/detail/player/search"""
 import json
+import os
 import sys
 
-sys.path.insert(0, "C:/Users/PC2/Documents/iDATA/同步/py-PP/py")
+# 跨机可移植：按本文件位置自推导仓库 py/ 目录（勿硬编码任何机器绝对路径）
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "py"))
 import KuwoMV as K
 
 sp = K.Spider()
