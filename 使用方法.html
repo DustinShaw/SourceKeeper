@@ -145,7 +145,7 @@ tbody tr:nth-child(even){background:var(--card);}
 <main>
   <div class="top-note">本页由 <code>使用方法.md</code> 自动生成 · v1.2.0 —— 侧边栏可直接跳转章节。</div>
 <h1 id="top">源管家 使用方法</h1>
-<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.2.0</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.2.0</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.2.0.exe</code>（Win10+，Qt6） · Win7 版<strong>按需构建</strong>，不随每个版本发布（最新为 <code>源管家 v1.0.1-Win7.exe</code>）</p></blockquote>
+<blockquote><p>绿色单文件 exe，双击即用图形界面（不弹控制台黑窗）。 命令行为高级用法：需用源码 <code>python injector.py &lt;参数&gt;</code> 运行（打包后的 exe 只出图形界面）。 本文按「我要做什么」组织，可直接按场景查阅。</p><p>🎉 <strong>当前版本：<code>1.2.0</code></strong>（语义化三段式：主版本.次版本.修订号）。<strong>主窗口与所有对话框的标题栏都带版本后缀</strong>， 例如 <code>D:\myrepo — 源管家 v1.2.0</code>，提示弹窗也会自动补上——想确认版本看标题栏即可。</p><p>两种可执行文件（同一份源码产出，详见文末）： <code>源管家 v1.2.0.exe</code>（Win10+，Qt6） · <code>源管家 v1.2.0-Win7.exe</code>（Win7，Qt5）</p></blockquote>
 <hr>
 <h2 id="first">0. 第一次使用</h2>
 <ol><li>双击 <code>源管家 v&lt;版本&gt;.exe</code>（本版为 <code>源管家 v1.2.0.exe</code>；版本号是三段式 <code>主.次.修订</code>）。</li><li>点「选择…」选中<strong>仓库目录</strong>（里面应有配置文件和 <code>py/</code> 文件夹）。</li><li>配置文件一般留空即可——程序会自动识别（主窗口状态标签显示「已加载 xxx.json · 站点 N 个」即成功；窗口标题为「仓库路径 — 源管家 v&lt;版本&gt;」，版本号在所有标题栏与「ℹ 关于」里都能看到）。</li><li>如果你的配置文件不是自动识别到的那一个：<strong>点「配置文件」框右侧的 ▼</strong>，下拉直接列出仓库目录里的全部候选 JSON（py.json 优先），点选即加载；也可以手动输入文件名（如 <code>12.json</code>）后回车，或点「自动识别」重试。切换仓库目录后下拉候选会自动刷新。</li></ol>
@@ -262,7 +262,7 @@ tbody tr:nth-child(even){background:var(--card);}
 <p><strong>Q：标题栏里的「v2610041344」是什么？</strong> <strong>版本号</strong>，格式为语义化三段式 <code>主.次.修订</code>（如 <code>v1.2.0</code>）。所有窗体（主窗口、各对话框、提示弹窗）标题栏都带这个后缀，一眼就能确认手上是哪一版。</p>
 <p><strong>Q：「🧹 剔除失效源」会不会误删我的好源？</strong> 不会。它只认两类<strong>明确失效</strong>信号：① URL 可达性检测判为「不可达」；②「资源」列显示「缺失」。<strong>从没检测过的站点一律不算失效</strong>——如果还没跑过测活 / URL 检测，这个动作等于什么都不做。默认动作是「<strong>禁用</strong>」（随时可用「启用选中」恢复），要真删得在确认框里显式选「删除」，而且只摘配置项、<strong>不删 .py</strong>。</p>
 <p><strong>Q：合并导入会不会覆盖我现有的 .py？</strong> 不会默认覆盖。目标里已有同名文件时：内容相同 → 直接跳过；<strong>内容不同 → 默认改名</strong>（<code>x.py</code> → <code>x_2.py</code>）并把所有指向它的引用（api / jar / 文件内 import / ext 路径）同步改到新名。只有你在逐文件确认框里主动选「覆盖」，才会先备份（<code>backups/companions/</code>）再覆盖。</p>
-<p><strong>Q：Win7 上提示"缺少 xxx.dll"怎么办？</strong> 请用文件名带 <strong><code>-Win7</code> 后缀</strong>的那一份（Win7 版按需构建，最新为 <code>源管家 v1.0.1-Win7.exe</code>）。 主程序（Qt6 版，文件名不带后缀）依赖 Python 3.13 / Qt6 的运行库，这两者都要求 Win8 以上，不是打包漏文件。Win7 版走的是 Python 3.9 + Qt5 那一套，才真正支持 Win7；另外确保系统装过 <strong>VC++ 运行库（2015-2019）</strong>。</p>
+<p><strong>Q：Win7 上提示"缺少 xxx.dll"怎么办？</strong> 请用文件名带 <strong><code>-Win7</code> 后缀</strong>的那一份（最新为 <code>源管家 v1.2.0-Win7.exe</code>）。 主程序（Qt6 版，文件名不带后缀）依赖 Python 3.13 / Qt6 的运行库，这两者都要求 Win8 以上，不是打包漏文件。Win7 版走的是 Python 3.9 + Qt5 那一套，才真正支持 Win7；另外确保系统装过 <strong>VC++ 运行库（2015-2019）</strong>。</p>
 <hr>
 <h2 id="win7">Win7 版怎么来 / 怎么打</h2>
 <p>工程里同一份 <code>injector.py</code> 内含 Qt 绑定兼容层：装得到 PySide6 就走 Qt6，装不到就自动回退 PySide2（Qt5），所以两套 exe 由同一份源码产出。</p>
@@ -273,7 +273,7 @@ tbody tr:nth-child(even){background:var(--card);}
 &lt;py39&gt; build_win7.py
 
 # 产出：源管家 v&lt;版本&gt;-Win7.exe（与 Win10+ 版并存，互不覆盖）
-# 本版产出：源管家 v1.2.0.exe（Win7 版需专门要求，产出 源管家 v&lt;版本&gt;-Win7.exe）</code></pre>
+# 本版产出：源管家 v1.2.0.exe + 源管家 v1.2.0-Win7.exe（Win7 版需专门要求构建）</code></pre>
 <blockquote><p><strong>关于版本号</strong>：本版起改用<strong>语义化三段式</strong> <code>主版本.次版本.修订号</code>（如 <code>1.2.0</code>），两条流水线识别到该格式直接放行、不再核对日期。 旧「日期 + 时间」<code>YYMMDDHHMM</code> 格式<strong>仍然支持</strong>（此时强制前 6 位等于今天）；节日特别版这类标记串（如 <code>"2026 国庆特别版"</code>）会被识别为非标准版本号， 打印「⚠️ 非标准版本号（节日特别版），跳过日期核对」并继续。切换版本风格只需改 <code>APP_VERSION</code> 一处，其余无需回滚。</p></blockquote>
 <p>两条构建流水线的关系：</p>
 <div class="tw"><table><thead><tr><th>脚本</th><th>解释器 / Qt</th><th>产物</th></tr></thead><tbody><tr><td><code>build.py</code></td><td>3.13 / PySide6</td><td><code>源管家 v&lt;版本&gt;.exe</code></td></tr><tr><td><code>build_win7.py</code></td><td>3.9  / PySide2</td><td><code>源管家 v&lt;版本&gt;-Win7.exe</code></td></tr></tbody></table></div>
