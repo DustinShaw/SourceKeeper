@@ -107,7 +107,7 @@ r = C.check_duplicates([
 ok("报告含命中 key", "a1" in r[0] and "a2" in r[0], r)
 
 print("== 9) 真实配置形态：合法多线路不应被误报 ==")
-# 用例数据一律用**示例域名/IP**，不得抄真实配置里的站点（个人数据，见 安全约定.md 红线 3/4）
+# 用例数据一律用**示例域名/IP**，不得抄真实配置里的站点（个人数据，不对外发布）
 REAL = [
     S("站点甲", "csp_PanWebShare", JAR, {"site": ["http://203.0.113.10:8080"]}),
     S("站点乙", "csp_PanWebShare", JAR, {"site": ["https://example-panweb.net"]}),
