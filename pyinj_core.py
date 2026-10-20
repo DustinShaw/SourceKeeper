@@ -916,6 +916,86 @@ def update_site(text, key, field, value):
     raise ValueError("未找到 key=%s 的站点" % key)
 
 
+def clone_site_entry(text, key, new_key, new_name=None, new_ext=None,
+                     new_jar=None, extra=None):
+    """复制一个已有条目为**新条目**并插入 sites 数组。
+
+    用途：同一个 spider 脚本被多条 site 条目共用、各条用 `ext` 区分参数的场景
+    （如「一个脚本爬多个 UP 主」——每条 ext 里放不同的 mid）。
+    手工加这类条目很繁琐（key 必须唯一、ext 必须写对），故提供此入口。
+
+    参数：
+        text      配置原文（JSONC）
+        key       作为模板的源条目 key
+        new_key   新条目的 key（必须唯一，否则抛 ValueError）
+        new_name  新条目 name（默认沿用源条目 name）
+        new_ext   新条目 ext（默认沿用源条目 ext；显式传 None 表示"沿用"）
+        new_jar   新条目 jar（默认沿用）
+        extra     额外要覆盖的字段 dict（如 {"api": "..."}）
+
+    返回 (新文本, 新条目 dict)。源条目**原样保留**。
+    """
+    spans = parse_site_spans(text)
+    src = None
+    for s, e, obj in spans:
+        if obj.get("key") == key:
+            src = obj
+            break
+    if src is None:
+        raise ValueError("未找到 key=%s 的站点" % key)
+
+    new_key = (new_key or "").strip()
+    if not new_key:
+        raise ValueError("新条目的 key 不能为空")
+    # key 唯一性：源条目之外若已有同名 key，直接报错（避免静默覆盖）
+    for s, e, obj in spans:
+        if obj.get("key") == new_key and new_key != key:
+            raise ValueError("key=%s 已存在，请换一个" % new_key)
+
+    ent = dict(src)
+    ent["key"] = new_key
+    if new_name is not None and str(new_name).strip():
+        ent["name"] = str(new_name).strip()
+    if new_ext is not None:
+        ent["ext"] = new_ext
+    if new_jar is not None:
+        ent["jar"] = new_jar
+    if extra:
+        for k, v in extra.items():
+            if v is not None:
+                ent[k] = v
+    # 禁用态不该被克隆（复制出来的应是可用条目）
+    ent.pop("_disabled", None)
+    # fmt_entry 要求 7 个核心字段齐全 —— 源条目若缺（老配置/手写条目）则补默认值
+    ent.setdefault("name", new_key)
+    ent.setdefault("api", "")
+    ent.setdefault("filterable", 1)
+    ent.setdefault("quickSearch", 1)
+    ent.setdefault("searchable", 1)
+    ent.setdefault("type", 3)
+    return insert_into_sites(text, [ent]), ent
+
+
+def unique_site_key(text, base, taken=None):
+    """给新条目生成一个不冲突的 key：base / base_2 / base_3 …
+
+    供 GUI「复制为新条目」用 —— 源管家的注入规则里 key = "py_" + 文件名，
+    同一脚本只能生成一个 key，后续条目必须另起名字。
+    """
+    used = set(taken or ())
+    for s, e, obj in parse_site_spans(text):
+        k = obj.get("key")
+        if k:
+            used.add(k)
+    base = (base or "key").strip() or "key"
+    if base not in used:
+        return base
+    i = 2
+    while ("%s_%d" % (base, i)) in used:
+        i += 1
+    return "%s_%d" % (base, i)
+
+
 def site_fingerprint(obj):
     """返回条目「功能身份」签名（用于判重）。**不含 key**。
 

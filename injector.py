@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "1.2.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.3.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
                              # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
@@ -3239,6 +3239,7 @@ def run_gui():
             e = self._shown[sel_rows[0]]
             api = str(e.get("api", ""))
             menu.addAction("✏️ 编辑", self.edit_row)
+            menu.addAction("📋 复制为新条目…", self.clone_row)
 
             # 「打开」动作按 type 动态变文案/图标：不同 type 打开的东西完全不同。
             tgt = open_target_of(e, self.base_dir, self.repo_dir,
@@ -3811,6 +3812,86 @@ def run_gui():
                 self._refresh_table()
                 dlg.accept()
 
+            bb.accepted.connect(_on_ok)
+            fl.addRow(bb)
+            dlg.exec()
+
+        def clone_row(self):
+            """「复制为新条目」：以选中条目为模板，新建一条共用同一脚本、参数不同的条目。
+
+            典型用途：同一个 spider 脚本爬多个对象（如 B 站多个 UP 主）——
+            每条条目用 ext 区分参数（如 ext.mid），无需复制脚本、无需手改 JSON。
+            """
+            e = self._sel_entry()
+            if e is None:
+                QMessageBox.information(self, "提示", "请先选中一个站点。")
+                return
+            if e.get("_disabled"):
+                QMessageBox.warning(self, "提示",
+                                    "该站点已禁用（已被注释掉），请先「启用选中」再复制。")
+                return
+            src_key = str(e.get("key", ""))
+            src_api = str(e.get("api", "") or "")
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle(tagged_title("复制为新条目"))
+            fl = QFormLayout(dlg)
+
+            vk = QLineEdit(_core.unique_site_key(self.raw, src_key + "_copy"))
+            vk.setPlaceholderText("新条目的唯一标识（不能与已有条目重复）")
+            vn = QLineEdit(str(e.get("name", "")) + " 副本")
+            vapi = QLineEdit(src_api)
+            vapi.setToolTip("新条目复用的脚本/接口地址（一般不改）")
+            _ext_cur = e.get("ext")
+            _ext_txt = (json.dumps(_ext_cur, ensure_ascii=False, indent=2)
+                        if isinstance(_ext_cur, (dict, list))
+                        else (str(_ext_cur) if _ext_cur else ""))
+            ve = QPlainTextEdit(_ext_txt)
+            ve.setPlaceholderText('（扩展参数 JSON，例如 {"mid": "50391034"}）')
+            ve.setMinimumHeight(90)
+
+            fl.addRow("原条目:", QLabel("%s（%s）" % (src_key, src_api)))
+            fl.addRow("新条目 key:", vk)
+            fl.addRow("新条目 name:", vn)
+            fl.addRow("复用 api:", vapi)
+            fl.addRow("扩展参数 ext（JSON）:", ve)
+            tip = QLabel("提示：ext 用来区分同一脚本的不同参数。改完这里，"
+                         "新条目就能与原条目共用一个脚本、各自抓不同目标。")
+            tip.setWordWrap(True)
+            fl.addRow(tip)
+
+            def _on_ok():
+                nk = vk.text().strip()
+                if not nk:
+                    QMessageBox.warning(dlg, "提示", "新条目的 key 不能为空。")
+                    return
+                txt = ve.toPlainText().strip()
+                if txt:
+                    try:
+                        ext_val = json.loads(txt)
+                    except Exception as ex:
+                        QMessageBox.warning(dlg, "ext 不是合法 JSON",
+                                            "ext 必须是合法 JSON（对象或数组）：\n%s" % ex)
+                        return
+                else:
+                    ext_val = None
+                try:
+                    new_text, ent = _core.clone_site_entry(
+                        self.raw, src_key, nk,
+                        new_name=vn.text().strip(),
+                        new_ext=ext_val,
+                        extra={"api": vapi.text().strip() or src_api})
+                except Exception as ex:
+                    QMessageBox.warning(dlg, "复制失败", str(ex))
+                    return
+                self.raw = new_text
+                self.changed = True
+                self._refresh_table()
+                dlg.accept()
+                self._toast("已复制为新条目：%s（记得「保存并写入配置」）" % nk)
+
+            bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            bb.rejected.connect(dlg.reject)
             bb.accepted.connect(_on_ok)
             fl.addRow(bb)
             dlg.exec()
@@ -5740,6 +5821,7 @@ def run_gui():
             tgt = open_target_of(entry, self.base_dir, _repo)
             menu = QMenu(self)
             menu.addAction("📝 编辑站点配置…", lambda: self._act_in_parent(key, "edit_row"))
+            menu.addAction("📋 复制为新条目…", lambda: self._act_in_parent(key, "clone_row"))
             if tgt["kind"] == "file":
                 act_py = menu.addAction("📄 打开脚本文件（双击亦可）")
                 act_py.triggered.connect(lambda: self._open_path(tgt["path"]))
