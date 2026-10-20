@@ -54,7 +54,7 @@ EXT_OBJ = {
     "dataIv": "OC1A06E197EF10CF3F6058CA7A803B5E",
     "pkg": "com.dytiantang.one",
     "host": "",
-    "site": "https://dyttandroid04-1372779881.cos.ap-shanghai.myqcloud.com/",
+    "site": "https://example-cdn.ap-shanghai.myqcloud.com/",
     "n": 0,
 }
 EXT_LINES = len(json.dumps(EXT_OBJ, ensure_ascii=False, indent=2).split("\n"))  # = 8

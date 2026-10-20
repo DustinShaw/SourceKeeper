@@ -57,7 +57,7 @@ def main():
     try:
         sites = [{"key": "k%d" % i, "name": n, "api": "./py/%s.py" % n, "type": 3}
                  for i, n in enumerate(
-                     ["豆瓣", "青禾影视", "农民影视", "鬼片之家1", "CCTV"])]
+                     ["站点甲", "站点乙", "站点丙", "站点丁", "站点戊"])]
         raw = json.dumps({"sites": sites}, ensure_ascii=False)
         with open(os.path.join(tmp, "py.json"), "w", encoding="utf-8") as f:
             f.write(raw)

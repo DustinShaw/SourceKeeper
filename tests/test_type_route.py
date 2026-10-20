@@ -110,9 +110,9 @@ sites = [
     {"key": "dir1", "name": "目录D", "api": "https://x.example.com/alist", "type": 4},
     # jar 型 spider：远程 jar 里的类名，绝不能被当缺失 .py 误报
     {"key": "jar1", "name": "配置中心", "api": "csp_Config", "type": 3,
-     "jar": "http://47.120.41.246:8025/vip/jar/lubin.php"},
-    {"key": "jar2", "name": "至臻", "api": "csp_PanWebShare", "type": 3,
-     "jar": "http://47.120.41.246:8025/vip/jar/lubin.php"},
+     "jar": "http://198.51.100.20:8025/vip/jar/lubin.php"},
+    {"key": "jar2", "name": "站点甲", "api": "csp_PanWebShare", "type": 3,
+     "jar": "http://198.51.100.20:8025/vip/jar/lubin.php"},
 ]
 raw = json.dumps({"sites": sites}, ensure_ascii=False)
 with open(os.path.join(tmp, "py.json"), "w", encoding="utf-8") as f:
@@ -148,7 +148,7 @@ ok("资源列：直连源显示「直连」", rows.get("直连A") == "直连", r
 ok("资源列：缺失 Spider 显示「缺失」", rows.get("蜘蛛缺失") == "缺失", rows)
 ok("资源列：正常 Spider 显示「正常」", rows.get("蜘蛛OK") == "正常", rows)
 ok("资源列：jar 型源显示「远程」（非误报缺失）", rows.get("配置中心") == "远程", rows)
-ok("资源列：csp_ jar 源显示「远程」", rows.get("至臻") == "远程", rows)
+ok("资源列：csp_ jar 源显示「远程」", rows.get("站点甲") == "远程", rows)
 
 print("-- URL 检测路由（type:1 走 HTTP，不报「未找到 .py」）--")
 # 直接调 check_source_reachability 验type 分流（不联网：type:1 会 HTTP，用不可达域名可接受）
