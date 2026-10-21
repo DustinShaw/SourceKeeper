@@ -34,7 +34,7 @@ from datetime import datetime
 # 版本号：常规写作「发布日期+时间」YYMMDDHHMM（build.py 会核对日期部分=今天）；
 # 临时节假日版可直接写标记串（如“2026 国庆特别版”），build.py 检测到非 10 位数字
 # 会自动跳过日期核对并给出提示。恢复常规发版时改回 YYMMDDHHMM 即可。
-APP_VERSION = "1.3.0"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
+APP_VERSION = "1.3.3"        # 语义化三段式版本（major.minor.patch；exe 名「源管家 v<版本>.exe」）
                              # 历史：2026-10-10 之前用 YYMMDDHHMM 时间戳，本版起统一为三段式。
 APP_NAME = "源管家"             # 应用名（窗口标题基础名；版本号移入「关于」）
 APP_TITLE = APP_NAME            # 主窗口标题基础名（实际标题 = 仓库路径 — 源管家）
@@ -1016,6 +1016,10 @@ def run_gui():
         progress = Signal(int, int, str)        # 已完成数, 总数, 当前站点名
         item_done = Signal(str, int, str, str)  # key, 状态码(1可达/0不可达/2无URL), 方法, 备注
         finished_map = Signal(dict)             # 最终 url_map: key -> (code, method, note)
+        # 失败原因分类（新增独立信号，不改 item_done 签名以免破坏既有 connect）：
+        # kind 取值见 pyinj_core.classify_unreachable；界面据此把「疑似本机网络」
+        # 与「很可能真失效」区分显示，避免把网络问题误当源失效。
+        kind_done = Signal(str, str)            # key, 失败分类（可达时为空串）
 
         def __init__(self, dialog, base_dir, entries, resolved=None, name_map=None,
                      alt_dir=None, repo_dir=None, cfg_name=None, allow_prompt=False):
@@ -1098,6 +1102,10 @@ def run_gui():
                     # None：无 URL 可检测 / 直连源无本地 .py 等 → 中性提示
                     code, method, note = 2, "", (r.get("note") or "无 URL 可检测")
                 m[k] = (code, method, note)
+                # ⚠️ 顺序要紧：kind 必须**先于** item_done 入库，否则 _on_url_item
+                # 触发的表格刷新读到的还是上一轮的分类。
+                if code == 0:
+                    self.kind_done.emit(k, str(r.get("kind") or ""))
                 self.item_done.emit(k, code, method, note)
                 self.progress.emit(i + 1, total, e.get("name", ""))
             self.finished_map.emit(m)
@@ -1975,7 +1983,7 @@ def run_gui():
             self.edit.setMinimumWidth(180)
             self.edit.setToolTip(
                 "自定义代理服务器：配置后工具内**全部网络请求**都经它——\n"
-                "URL 可达性 / 网络体检 / 网络诊断 / 源测速 / JAR 体检 / 深度检测 / 源测活。\n"
+                "连通性快检 / 需代理筛选 / 源测活 / 源测速 / 网络诊断 / JAR 检查 / 深度检测。\n"
                 "支持 http、https、socks5（可带 账号:密码@）；留空 = 直连。")
             row.addWidget(self.edit, 1)
             self.btn = QPushButton("🔌 验证")
@@ -2144,13 +2152,17 @@ def run_gui():
             self._adult_resolved = {}  # 成人线程解析结果（key->py_path），供 URL 检测复用
             self._adult_name_map = {}  # 成人线程遍历结果（文件名->路径）
             self.url_map = {}          # key -> (code, method, note)
-            self.proxy_map = {}        # key -> bool：该站点是否需要代理；由「网络体检」填充
+            # key -> 失败分类（timeout / dns_fail / refused / proxy / …）。
+            # 用途：把「疑似本机网络」与「很可能真失效」在表格里区分显示，
+            # 避免把网络不可达误当源失效（详见 pyinj_core.classify_unreachable）。
+            self.url_kinds = {}
+            self.proxy_map = {}        # key -> bool：该站点是否需要代理；由「需代理筛选」填充
             self._proxy_scanning = False
             self._proxy_stop = False
             self._proxy_paused = False
             self._proxy_worker = None
             self._url_scanning = False
-            self._url_started = False  # URL 可达性检测是否已开始过
+            self._url_started = False  # 连通性快检是否已开始过
             self._url_stop = False     # URL 检测：停止请求
             self._url_paused = False   # URL 检测：暂停标记
             self._worker = None
@@ -2238,10 +2250,10 @@ def run_gui():
                         if relocated:
                             parts.append("已找回 %d 个" % len(relocated))
                         self.detect_grp.setTitle(
-                            "后台检测（成人·短剧·直播 / URL 可达性）— 独立启停 · ⚠ " + "，".join(parts))
+                            "后台检测（成人·短剧·直播 / 连通性快检）— 独立启停 · ⚠ " + "，".join(parts))
                     else:
                         self.detect_grp.setTitle(
-                            "后台检测（成人·短剧·直播 / URL 可达性）— 独立启停 · Spider 资源齐全")
+                            "后台检测（成人·短剧·直播 / 连通性快检）— 独立启停 · Spider 资源齐全")
                 except Exception:
                     pass
             self._refresh_table()
@@ -2332,7 +2344,7 @@ def run_gui():
             self.url_bar.setValue(done)
             if self._url_paused:
                 return  # 暂停中：保留「已暂停」文案，不被在途进度信号冲掉
-            self.url_label.setText("URL 可达性检测：第 %d / %d 个 · %s"
+            self.url_label.setText("连通性快检：第 %d / %d 个 · %s"
                                    % (done, total, name))
 
         def _on_url_item(self, key, code, method, note):
@@ -2340,6 +2352,13 @@ def run_gui():
                 return
             self.url_map[key] = (code, method, note)
             self._update_url_cell(key, code, method, note)
+
+        def _on_url_kind(self, key, kind):
+            """接收失败原因分类。仅缓存，不刷新表格——
+            item_done 通常紧随其后，那次刷新会带上最新分类。"""
+            if self._closed:
+                return
+            self.url_kinds[key] = kind or ""
 
         def _on_url_done(self, m):
             self.url_map = m
@@ -2352,10 +2371,10 @@ def run_gui():
             self.url_bar.setRange(0, 1)
             self.url_bar.setValue(1)
             if self._url_stop:
-                self.url_label.setText("URL 可达性检测：已停止 · 可达 %d · 不可达 %d · 其它 %d"
+                self.url_label.setText("连通性快检：已停止 · 可达 %d · 不可达 %d · 其它 %d"
                                        % (n_ok, n_bad, len(m) - n_ok - n_bad))
             else:
-                self.url_label.setText("URL 可达性检测：完成 · 可达 %d · 不可达 %d · 其它 %d"
+                self.url_label.setText("连通性快检：完成 · 可达 %d · 不可达 %d · 其它 %d"
                                        % (n_ok, n_bad, len(m) - n_ok - n_bad))
             self._update_detect_ui()
             self._refresh_table()
@@ -2414,7 +2433,7 @@ def run_gui():
             self._update_detect_ui()
 
         def _start_url(self):
-            """开始 URL 可达性检测（不影响成人检测）。"""
+            """开始连通性快检（不影响成人检测）。"""
             if self._closed or self._url_scanning:
                 return
             self._url_stop = False
@@ -2422,7 +2441,8 @@ def run_gui():
             self._url_started = True
             self._url_scanning = True
             self.url_map = {}
-            self.url_label.setText("URL 可达性检测：准备…")
+            self.url_kinds = {}   # 清上一轮的失败分类，避免残留
+            self.url_label.setText("连通性快检：准备…")
             self.url_bar.setRange(0, len(self.entries) or 1)
             self.url_bar.setValue(0)
             self._update_detect_ui()
@@ -2435,6 +2455,7 @@ def run_gui():
                 cfg_name=self.cfg_file, allow_prompt=False)
             self._url_worker.progress.connect(self._on_url_progress)
             self._url_worker.item_done.connect(self._on_url_item)
+            self._url_worker.kind_done.connect(self._on_url_kind)
             self._url_worker.finished_map.connect(self._on_url_done)
             self._url_worker.finished.connect(self._url_worker.deleteLater)
             self._url_worker.start()
@@ -2445,8 +2466,8 @@ def run_gui():
                 return
             self._url_paused = not self._url_paused
             self.url_label.setText(
-                "URL 可达性检测：已暂停（点「继续」恢复）" if self._url_paused
-                else "URL 可达性检测：继续检测…")
+                "连通性快检：已暂停（点「继续」恢复）" if self._url_paused
+                else "连通性快检：继续检测…")
             self._update_detect_ui()
 
         def _stop_url(self):
@@ -2460,7 +2481,7 @@ def run_gui():
                     self._url_worker.requestInterruption()
             except Exception:
                 pass
-            self.url_label.setText("URL 可达性检测：正在停止…")
+            self.url_label.setText("连通性快检：正在停止…")
             self._update_detect_ui()
 
         # ---- 需代理体检：复用 pyinj_netdiag.diagnose_source ----
@@ -2476,7 +2497,7 @@ def run_gui():
             self._proxy_paused = False
             self._proxy_scanning = True
             self.proxy_map = {}
-            self._toast("网络体检进行中…（可继续操作，完成后自动刷新）")
+            self._toast("需代理筛选进行中…（可继续操作，完成后自动刷新）")
             self._proxy_worker = _ProxyCheckWorker(self, self.entries, self.base_dir)
             self._proxy_worker.finished_map.connect(self._on_proxy_done)
             self._proxy_worker.finished.connect(self._proxy_worker.deleteLater)
@@ -2487,7 +2508,7 @@ def run_gui():
             self.proxy_map = dict(m or {})
             n = sum(1 for v in self.proxy_map.values() if v)
             self._refresh_table()
-            self._toast("网络体检完成：%d 个站点可能需要代理" % n)
+            self._toast("需代理筛选完成：%d 个站点可能需要代理" % n)
 
         # ---- 共用检测控制（勾选类型 + 一套 开始/暂停/停止）----
         def _start_detect(self):
@@ -2785,7 +2806,7 @@ def run_gui():
         def _build(self):
             root = QVBoxLayout(self)
 
-            # 检测状态面板：成人检测与 URL 可达性检测完全分离——各占一行、
+            # 检测状态面板：成人检测与连通性快检完全分离——各占一行、
             # 各有一条进度条，且各自带 开始/暂停(继续)/停止 三个按钮（放在状态条后、右对齐），
             # 默认不自动开始（避免打开界面即焦虑）
             detect_grp = QGroupBox("后台检测（勾选类型 · 共用控制）")
@@ -2795,21 +2816,47 @@ def run_gui():
             detect_gv.setSpacing(4)
 
             # 检测类型勾选（共用控制前先选要跑哪些）
+            # ⚠️ 命名/提示设计（2026-10-21 用户反馈：这几处让人搞不清区别）：
+            #   本组 3 个勾选框 = 「后台批量检测」的子项，共用下方一套 开始/暂停/停止，
+            #   结果写回表格列。深度检测是 URL 可达性的**加强模式**，不是独立功能。
             ct = QHBoxLayout()
             ct.setContentsMargins(0, 0, 0, 0)
+            ct.setSpacing(14)
             self.cb_adult = QCheckBox("成人 / 短剧 / 直播")
             self.cb_adult.setChecked(True)
-            self.cb_url = QCheckBox("URL 可达性")
+            self.cb_adult.setToolTip(
+                "看站点的**内容类型**：是不是成人 / 短剧 / 直播。\n"
+                "只用站名和 ext 字段猜，不发网络请求，所以很快。\n"
+                "结果写回表格「成人 / 短剧 / 直播」三列。")
+            self.cb_url = QCheckBox("连通性快检")
             self.cb_url.setChecked(True)
+            self.cb_url.setToolTip(
+                "快速判断站点**地址通不通**，结果写回表格「可达」列。\n"
+                "只探连通性、不测延迟、不看内容，所以快。\n"
+                "⚠️ 与工具箱「源测速」的区别：\n"
+                "   · 连通性快检 = 只答「通不通」，主表批量勾选用；\n"
+                "   · 源测速 = 多次采样测延迟 + 下载前 1KB 验证真能出数据，判「快不快」。")
             self.cb_deep = QCheckBox("深度检测（拉取直连站API内容，较慢）")
             self.cb_deep.setChecked(False)
             self.cb_deep.setToolTip(
-                "对 type 0/1 直连站拉取 api 页面内容做关键词匹配（每站一次网络请求）。\n"
-                "关闭时直连站仅按「站点名 + ext 字段」判定，速度快但可能漏检。")
+                "**连通性快检的加强模式**，不是独立功能——只有勾了「连通性快检」才生效。\n"
+                "对 type 0/1 直连站额外拉取 api 页面内容做关键词匹配，判定更准。\n"
+                "代价：每个直连站多一次网络请求，慢。\n"
+                "关闭时直连站仅按「站点名 + ext 字段」判定，速度快但可能漏检。\n"
+                "⚠️ 与底部「🩺 源测活」的区别：\n"
+                "   · 深度检测 = 顺便把分类判得更准；\n"
+                "   · 源测活 = 另一个工具，模拟影视仓真正加载一次，分类栏出不来 = 死源。")
             ct.addWidget(self.cb_adult)
             ct.addWidget(self.cb_url)
             ct.addWidget(self.cb_deep)
             ct.addStretch(1)
+            # 一行人话速查：把 3 个子项与 2 个易混按钮的边界直接摊开
+            _hint = QLabel(
+                "本组是「后台批量检测」的子项，共用下方一套 开始/暂停/停止；"
+                "深度检测须配合「连通性快检」使用")
+            _hint.setStyleSheet("color:%s; font-size:11px;" % ("#8a919c" if IS_DARK else "#6b7280"))
+            _hint.setWordWrap(True)
+            ct.addWidget(_hint, 1)
             detect_gv.addLayout(ct)
 
             self.prog_box = QWidget()
@@ -2839,7 +2886,7 @@ def run_gui():
 
             row2 = QHBoxLayout()
             row2.setContentsMargins(0, 0, 0, 0)
-            self.url_label = QLabel("URL 可达性检测：未开始 · 勾选后点「开始」")
+            self.url_label = QLabel("连通性快检：未开始 · 勾选后点「开始」")
             self.url_bar = QProgressBar()
             self.url_bar.setObjectName("urlBar")
             self.url_bar.setRange(0, len(self.entries) or 1)
@@ -2874,7 +2921,7 @@ def run_gui():
             ctrl.addWidget(self.b_detect_stop)
             ctrl.addStretch(1)
             detect_gv.addLayout(ctrl)
-            # 自定义代理服务器：联网检测（URL 可达性 / 网络体检 / 源测速 / 源测活…）统一出口。
+            # 自定义代理服务器：联网检测（连通性快检 / 需代理筛选 / 源测速 / 源测活…）统一出口。
             # 与「工具箱 → 网络诊断」页共用同一份设置（改动互相同步）。
             self.proxy_ctl = _ProxyControls(detect_gv)
             root.addWidget(detect_grp)
@@ -3093,7 +3140,7 @@ def run_gui():
             # 底部操作条：按钮多达 15 个，若挤在一行会把对话框最小宽度撑到上千像素
             # （导致表格上方出现大片空白、窗口被强行撑宽）。改为**两行分组网格**：
             #   第 1 行：批量操作（删除/禁用/启用/排序写回/禁用短剧/禁用直播/剔除失效）
-            #   第 2 行：检测工具（源测活/网络体检/工具箱）+ 导出（导出干净/智能分流）
+            #   第 2 行：检测工具（源测活/需代理筛选/工具箱）+ 导出（导出干净/智能分流）
             #   右下角固定：保存并写入（主操作）+ 关闭
             # QGridLayout 不强制一行放完，按钮条的「最小宽度」回落到单行最宽分组，
             # 对话框宽度重新由表格内容决定，空白区域消失。
@@ -3130,14 +3177,33 @@ def run_gui():
                     self._btn_enable = b
 
             # ---- 第 2 行：检测工具 + 导出 ----
+            # ⚠️ 命名/提示设计（2026-10-21 用户反馈：源测活 vs 需代理筛选 让人搞不清）：
+            #   下面两个都是**独立工具**，各自弹自己的窗口，与上方「后台检测」勾选项无关。
             tools = [("🩺 源测活", self.probe_config, None),
-                     ("🌐 网络体检", self.scan_proxy_sites, None),
+                     ("🔎 需代理筛选", self.scan_proxy_sites, None),
                      ("🧰 工具箱", self.open_toolbox, None),
                      ("⇅ 排序写回配置", self.write_sorted_order, None),
                      ("📤 导出干净配置", self.export_config, None),
                      ("🔀 智能分流导出", self.split_export, None)]
             for i, (txt, fn, accent) in enumerate(tools):
-                grid.addWidget(_mk_btn(txt, fn, accent), 1, i)
+                b = _mk_btn(txt, fn, accent)
+                if txt == "🩺 源测活":
+                    b.setToolTip(
+                        "**模拟影视仓真正加载这个源**，加载不出分类栏 = 死源。\n"
+                        "覆盖：type:1 直连（HTTP 取分类）、type:3 本地 .py（子进程隔离跑）。\n"
+                        "结果独立成表，不写回主表。\n"
+                        "⚠️ 与工具箱「源测速」的区别：\n"
+                        "   · 源测速 = 测延迟与下载，判「快不快、能不能下」；\n"
+                        "   · 源测活 = 真加载一次，判「影视仓还认不认这个源」。")
+                elif txt == "🔎 需代理筛选":
+                    b.setToolTip(
+                        "**找出需要代理才能访问的站点**，结果标记到表格「需代理」列，供筛选。\n"
+                        "与工具箱「网络诊断」同一套判据（DNS 失败 / 命中代理域名库 / 连接被拒），"
+                        "但这里只出标记、不出明细表。\n"
+                        "⚠️ 要细看 DNS、IP、耗时与具体结论 → 去工具箱「网络诊断」。")
+                elif txt == "🧰 工具箱":
+                    b.setToolTip("分类识别 / JAR 检查 / 源测速 / 网络诊断 / 上传到电视 / 分区管理 等。")
+                grid.addWidget(b, 1, i)
 
             # grid 左侧弹性 + 右下角主操作/关闭
             grid.setColumnStretch(len(batch), 1)
@@ -3147,6 +3213,37 @@ def run_gui():
             grid.addWidget(_mk_btn("关闭", self.close), 1, len(tools),
                            Qt.AlignRight | Qt.AlignVCenter)
             root.addLayout(grid)
+
+            # ⚠️ 常驻速查栏（2026-10-21 用户反馈：术语撞名、搞不清区别）。
+            #   术语体系（全局已统一）：检测分两层——
+            #     勾选框 = 主表批量快检（共用一套控制，结果写回表格列）
+            #     工具箱 = 明细工具（各弹自己的窗口，出独立表）
+            cheats = QLabel(
+                "<b>检测分两层：</b>"
+                "上方 3 个<b>勾选框</b>＝对主表批量快检（共用一套 开始/暂停/停止，结果写回表格列）；"
+                "下方 <b>🧰 工具箱</b>里的功能出明细表。"
+                "&nbsp;|&nbsp;"
+                "<b>🩺源测活</b>、<b>🔎需代理筛选</b> 是主窗口的独立工具。"
+                "<br>"
+                "<b>易混对照：</b>"
+                "<b>连通性快检</b>只问<b>通不通</b>（主表批量、快）"
+                "&nbsp;vs&nbsp; <b>工具箱·源测速</b>还测<b>延迟与真实下载</b>（慢、细）；"
+                "&nbsp;|&nbsp;"
+                "<b>需代理筛选</b>只出<b>标记</b>"
+                "&nbsp;vs&nbsp; <b>工具箱·网络诊断</b>出<b>DNS/IP/耗时明细</b>；"
+                "&nbsp;|&nbsp;"
+                "<b>深度检测</b>＝<b>连通性快检</b>的加强模式（更准更慢），"
+                "<b>🩺源测活</b>＝真加载一次只答<b>死活</b>。"
+            )
+            cheats.setTextFormat(Qt.RichText)
+            cheats.setWordWrap(True)
+            cheats.setStyleSheet(
+                "QLabel { color:%s; font-size:11px; background:%s; border:1px solid %s;"
+                " border-radius:4px; padding:6px 8px; }"
+                % ("#b9c0c9" if IS_DARK else "#4b5563",
+                   "#252a32" if IS_DARK else "#f4f6f9",
+                   "#3c424b" if IS_DARK else "#d8dee7"))
+            root.addWidget(cheats)
 
             # 底部状态行：瞬时提示（toast，替代部分弹窗）；计数在搜索行右侧
             srow = QHBoxLayout()
@@ -3448,8 +3545,22 @@ def run_gui():
                         url_item = QTableWidgetItem(txt)
                         url_item.setForeground(QColor(20, 120, 40))
                     elif code == 0:
-                        url_item = QTableWidgetItem("不可达")
-                        url_item.setForeground(QColor(200, 30, 30))
+                        # ⚠️ 区分「疑似本机网络」与「很可能真失效」：同一种超时现象有两种解释，
+                        # 程序无法自证，故只标「疑似」并用橙色区别，真伪以电视端实测为准。
+                        kind = self.url_kinds.get(key, "")
+                        if kind == "timeout":
+                            txt = "不可达·疑似本机网络"
+                            url_item = QTableWidgetItem(txt)
+                            url_item.setForeground(QColor(190, 110, 0))
+                            url_item.setToolTip(
+                                "连接超时——DNS 能解析但连不上。\n"
+                                "常见原因：本机网络到该服务器被阻断、或该服务器已限制访问。\n"
+                                "⚠️ 不等于源已失效；换网络/代理复测，或在电视上实测后再判断。\n"
+                                "原始信息：%s" % (note or ""))
+                        else:
+                            url_item = QTableWidgetItem(note or "不可达")
+                            url_item.setForeground(QColor(200, 30, 30))
+                            url_item.setToolTip(note or "")
                     else:
                         url_item = QTableWidgetItem(note or "无URL")
                         url_item.setForeground(QColor(110, 110, 110))
@@ -4171,7 +4282,7 @@ def run_gui():
         def purge_dead_sources(self):
             """🧹 剔除失效源：把**已检测判定失效**的站点一次性处理掉。
 
-            判定只用明确失效信号（URL 不可达 / 本地脚本缺失），**未检测的条目一律不动**，
+            判定只用明确失效信号（地址不可达 / 本地脚本缺失），**未检测的条目一律不动**，
             避免误伤好源。默认「禁用」（注释保留、可恢复），也可选「删除」。
             """
             info = dead_source_keys(self.entries, self.url_map,
@@ -4182,7 +4293,7 @@ def run_gui():
                     self, "未发现失效源",
                     "没有已判定失效的站点。\n\n"
                     "判定依据（需先跑检测，未检测的不算）：\n"
-                    "· 「URL 可达性检测」→ 不可达\n"
+                    "· 「连通性快检」→ 不可达\n"
                     "· 「本地 .py 检查」→ 缺失\n\n"
                     "也可用过滤下拉选「⛔ 仅失效源」查看当前结果。")
                 return
@@ -4517,7 +4628,7 @@ def run_gui():
                 return
             _ProbeDialog(self, items).exec()
 
-        # ---- 工具箱：分类识别 / JAR 体检 / 测速 / 网络诊断 / 直播表转换 / 诊断报告 ----
+        # ---- 工具箱：分类识别 / JAR 检查 / 测速 / 网络诊断 / 直播表转换 / 诊断报告 ----
         def open_toolbox(self):
             """打开「工具箱」对话框：把新增的零 Qt 纯逻辑模块（pyinj_jar /
             pyinj_playlist / pyinj_report / pyinj_kw / pyinj_speed / pyinj_netdiag）
@@ -6023,7 +6134,7 @@ def run_gui():
     # ------------------------------------------------------------------
     # 工具箱：把新增的零 Qt 纯逻辑模块接到界面上
     #   · 分类识别    —— pyinj_kw.detect_categories（成人/短剧/直播/音乐/音频/点播）
-    #   · JAR 体检    —— pyinj_jar（jar 型 spider 的远程 jar 健康度）
+    #   · JAR 检查    —— pyinj_jar（jar 型 spider 的远程 jar 健康度）
     #   · 源测速      —— pyinj_speed（延迟采样 + 前 N 字节真实下载）
     #   · 网络诊断    —— pyinj_netdiag（DNS / 超时-拒绝 / 代理域名库）
     #   · 直播表转换  —— pyinj_playlist（TXT ↔ M3U）
@@ -6213,9 +6324,12 @@ def run_gui():
 
             root = QVBoxLayout(self)
             tip = QLabel(
-                "把「分类识别 / JAR 体检 / 源测速 / 网络诊断 / 直播表转换 / 诊断报告 / "
+                "把「分类识别 / JAR 检查 / 源测速 / 网络诊断 / 直播表转换 / 诊断报告 / "
                 "上传到电视/盒子 / 分区管理」集中在这里。除「分区管理」外均为<b>只读检测</b>，"
-                "不改动你的配置（上传页只读本机文件、只往设备写入）。")
+                "不改动你的配置（上传页只读本机文件、只往设备写入）。"
+                "<br><b>与主窗口的区别：</b>这里出<b>明细表</b>，供逐项查原因；"
+                "主窗口的勾选项做<b>批量快检</b>，结果直接写回表格列。"
+                "「网络诊断」＝「🔎需代理筛选」的详查版；「源测速」＝「连通性快检」的加测延迟版。")
             tip.setTextFormat(Qt.RichText)
             tip.setWordWrap(True)
             root.addWidget(tip)
@@ -6223,8 +6337,12 @@ def run_gui():
             top = QHBoxLayout()
             top.addWidget(QLabel("功能："))
             self.page = QComboBox()
+            # ⚠️ 页名统一（2026-10-21）：全项目术语去重，避免撞名。
+            #   · 「网络诊断」是本工具箱的详查版（DNS/耗时/需代理）；
+            #     主窗口那个只产出「需代理」标记，已改叫「需代理筛选」，不再叫「网络体检」。
+            #   · 「JAR 检查」不用「体检」——「体检」只留给源级检查。
             self.page.addItems([
-                "分类识别", "JAR 体检", "源测速", "网络诊断",
+                "分类识别", "JAR 检查", "源测速", "网络诊断",
                 "直播表转换（TXT ↔ M3U）", "诊断报告导出",
                 "上传到电视/盒子（ADB）", "分区管理",
             ])
@@ -6455,7 +6573,7 @@ def run_gui():
 
             self._run_tool("cat", self.entries, job, None, done, fmt="0 / %d")
 
-        # ---- JAR 体检页 ----
+        # ---- JAR 检查页 ----
         def _build_jar(self, page):
             v = QVBoxLayout(page)
             h = QHBoxLayout()
@@ -6481,7 +6599,7 @@ def run_gui():
             pairs = pyinj_jar.iter_jar_entries(self.entries)
             if not pairs:
                 self._status("当前配置里没有 jar 型 spider 源。")
-                QMessageBox.information(self, "JAR 体检", "当前配置里没有 jar 型源。")
+                QMessageBox.information(self, "JAR 检查", "当前配置里没有 jar 型源。")
                 return
             expect = self.ent_jar_md5.text().strip() or None
             entries = [e for e, _u in pairs]
@@ -6504,7 +6622,7 @@ def run_gui():
             def done(rows):
                 self._fill_table(self.t_jar, rows)
                 ok = sum(1 for r in rows if r[1] == "健康")
-                msg = "JAR 体检完成：共 %d 个，健康 %d 个。" % (len(rows), ok)
+                msg = "JAR 检查完成：共 %d 个，健康 %d 个。" % (len(rows), ok)
                 if expect:
                     mism = sum(1 for r in rows if r[4].startswith("不一致"))
                     msg += " MD5 不一致 %d 个。" % mism
@@ -6664,7 +6782,7 @@ def run_gui():
         # ---- 诊断报告导出页 ----
         def _build_report(self, page):
             v = QVBoxLayout(page)
-            info = QLabel("对全部源跑一遍「分类 / 测速 / 网络诊断 / JAR 体检」，汇总成报告。"
+            info = QLabel("对全部源跑一遍「分类 / 测速 / 网络诊断 / JAR 检查」，汇总成报告。"
                           "报告只读，导出为 Markdown（.md）或 CSV（.csv）。")
             info.setWordWrap(True)
             v.addWidget(info)
@@ -6673,7 +6791,7 @@ def run_gui():
             self.cb_report_speed.setChecked(True)
             self.cb_report_diag = QCheckBox("含网络诊断")
             self.cb_report_diag.setChecked(True)
-            self.cb_report_jar = QCheckBox("含 JAR 体检")
+            self.cb_report_jar = QCheckBox("含 JAR 检查")
             self.cb_report_jar.setChecked(True)
             h.addWidget(self.cb_report_speed)
             h.addWidget(self.cb_report_diag)

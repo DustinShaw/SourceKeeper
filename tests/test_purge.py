@@ -119,7 +119,7 @@ try:
     ok("★ 自动检测未把存在的 .py 误判为缺失",
        all(dlg.file_map.get("k%d" % i) == "normal" for i in range(1, 5)), dlg.file_map)
 
-    # 注入 URL 检测结果（模拟用户跑完「URL 可达性检测」）
+    # 注入 URL 检测结果（模拟用户跑完「连通性快检」）
     dlg.url_map = {"k1": (1, "tcp", ""), "k2": (0, "tcp", ""),
                    "k3": (1, "tcp", ""), "k4": (0, "tcp", "")}
     dlg._url_started = True

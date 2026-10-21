@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """工具箱对话框（_ToolboxDialog）GUI 测试（真实 PySide6 offscreen）。
-覆盖：分页切换、分类识别、JAR 体检、源测速、网络诊断、直播表转换、诊断报告导出。
+覆盖：分页切换、分类识别、JAR 检查、源测速、网络诊断、直播表转换、诊断报告导出。
 全部在本地临时仓库 + 本地 HTTP 服务器上跑，不访问外网。"""
 import io
 import os
@@ -141,7 +141,7 @@ ok("分类页进度条走满", _bar.value() == 100 and _bar.maximum() == 100,
 ok("分类页状态文字给出结果", "完成" in _lbl.text() or "命中" in tb.lbl_status.text(),
    _lbl.text())
 
-print("== 3) JAR 体检（本地 jar 可达）==")
+print("== 3) JAR 检查（本地 jar 可达）==")
 ok("JAR 页有进度条", "jar" in tb._page_bars)
 tb._run_jar()
 ok("检测完成", wait_tool())

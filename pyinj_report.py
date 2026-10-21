@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """源管家 · 诊断报告导出模块（pyinj_report）
 ==============================================
-把「源测速 / 网络诊断 / 分类识别 / JAR 体检」的结果汇总成一份**可读、
+把「源测速 / 网络诊断 / 分类识别 / JAR 检查」的结果汇总成一份**可读、
 可分享**的报告，支持 Markdown（便于粘贴/预览）与 CSV（便于表格处理）。
 
 设计原则：
@@ -72,7 +72,7 @@ def analyze_one(entry, base_dir=None, keywords=None,
     except Exception:
         pass
 
-    # JAR 体检
+    # JAR 检查
     if do_jar and is_jar_entry(entry):
         try:
             rec["jar"] = check_jar_source(entry)

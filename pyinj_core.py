@@ -1321,7 +1321,7 @@ _DEEP_UA = ("Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
 def deep_fetch_text(url, timeout=8, max_bytes=262144, proxy=None):
     """深度检测：拉取直连站 api 页面内容供关键词匹配。
     短超时 + 限长（默认 256KB）+ 任何异常返回空串——检测永远不因网络问题卡死/报错。
-    代理口径：**配置了自定义代理就走代理**；未配置时显式直连（与网络体检「直连优先」
+    代理口径：**配置了自定义代理就走代理**；未配置时显式直连（与需代理筛选「直连优先」
     口径一致 —— 采集站接口多为国内直连，本机系统代理反而会造成 502 之类假失败）。
     调用方负责并发/频度（当前为 worker 内串行调用）。"""
     u = str(url or "").strip()
@@ -1560,8 +1560,56 @@ def _method_tcp_connect(url, timeout=2.5, proxy=None):
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True, "tcp:%d" % port
-    except Exception:
-        return False, ""
+    except socket.gaierror as ex:
+        # DNS 解析失败——多半是域名真没了，但也可能是本机 DNS 问题
+        return False, "dns_fail:%s" % (str(ex)[:60] or type(ex).__name__)
+    except socket.timeout:
+        # DNS 通但连不上：源可能活着、只是本机网络到不了（运营商/防火墙），
+        # 属「疑似本机网络」而非确定失效，见 classify_unreachable。
+        return False, "timeout"
+    except (ConnectionRefusedError, ConnectionResetError) as ex:
+        return False, "refused:%s" % (str(ex)[:60] or type(ex).__name__)
+    except OSError as ex:
+        # socket.timeout 在部分平台是 OSError 子类，先前已单独捕获
+        return False, "oserr:%s" % (str(ex)[:60] or type(ex).__name__)
+    except Exception as ex:
+        return False, "err:%s" % (str(ex)[:60] or type(ex).__name__)
+
+
+def classify_unreachable(info):
+    """把底层失败原因归类，用于区分「确定失效」与「疑似本机网络」。
+
+    返回 (分类, 中文说明)：
+      · dns_fail    —— DNS 解析失败，更可能是域名真没了
+      · timeout     —— **DNS 通但连接超时**：源常是活的，只是本机网络到不了
+                       （例：咪咕 app.u.nf.migu.cn DNS 正常但 TCP 443 超时）
+      · refused     —— 连接被拒，端口关闭或被防火墙 RST
+      · http_5xx/4xx—— 服务在但不接受请求
+      · proxy_*     —— 代理侧问题（502/504 多为代理拦截，非源失效）
+      · unknown     —— 原因不明
+    ⚠️ 程序**无法自证**源是否还活着——同一现象可能有两种解释，故只标「疑似」，
+       不下「假阴性」的断言；真伪以用户电视端实测为准。
+    """
+    s = str(info or "")
+    if not s:
+        return "unknown", ""
+    low = s.lower()
+    if s.startswith("timeout") or "timed out" in low:
+        return "timeout", "连接超时·疑似本机网络"
+    if s.startswith("dns_fail") or "getaddrinfo" in low or "name or service not known" in low:
+        return "dns_fail", "DNS 解析失败"
+    # proxy 必须排在 http_err 之前：代理返回的 502/504 多为代理拦截，不是源本身的问题
+    if s.startswith("proxy"):
+        return "proxy", "代理侧问题"
+    if s.startswith("refused") or "refused" in low or "reset" in low:
+        return "refused", "连接被拒"
+    if "http:5" in low or "http:4" in low:
+        return "http_err", "服务拒绝请求"
+    if s.startswith("oserr") or "ssl" in low or "handshake" in low:
+        return "oserr", "连接异常"
+    if s.startswith("err"):
+        return "unknown", "原因不明"
+    return "unknown", ""
 
 
 def _method_http_get(url, timeout=4.0, proxy=None):
@@ -1619,6 +1667,9 @@ def check_url_reachable(url, tcp_timeout=2.5, http_timeout=4.0, proxy=None):
         if ok:
             return True, info, ""
         if info:
+            # timeout 是「疑似本机网络」的关键信号，优先级高于后续 HTTP 的笼统错误
+            if last_err == "timeout":
+                continue
             last_err = info
     return False, "", last_err
 
@@ -1633,12 +1684,22 @@ def check_site_urls(py_path, max_urls=2, proxy=None):
         return {"reachable": None, "method": "", "url": "",
                 "note": "未从 .py 中提取到 URL", "urls": []}
     tested = urls[:max_urls]
+    last_kind, last_note = "", ""
     for u in tested:
         ok, method, err = check_url_reachable(u, proxy=proxy)
         if ok:
             return {"reachable": True, "method": method, "url": u, "note": "", "urls": urls}
+        # 记录失败原因：多个 URL 时取「最可能是本机网络」的那条（timeout 优先），
+        # 这样界面才能标出「疑似本机网络」，避免把网络问题误当源失效。
+        k, note = classify_unreachable(err)
+        if last_kind != "timeout" and k == "timeout":
+            last_kind, last_note = k, note
+        elif not last_kind:
+            last_kind, last_note = k, note
+    tail = "（%s）" % last_note if last_note else ""
     return {"reachable": False, "method": "", "url": tested[0],
-            "note": "前 %d 个 URL 的 TCP/HTTP 均不可达" % len(tested), "urls": urls}
+            "note": "前 %d 个 URL 的 TCP/HTTP 均不可达%s" % (len(tested), tail),
+            "kind": last_kind, "urls": urls}
 
 
 def check_source_reachability(entry, base_dir=None, max_urls=2, proxy=None):
@@ -1653,18 +1714,22 @@ def check_source_reachability(entry, base_dir=None, max_urls=2, proxy=None):
                  or api.endswith((".py", ".js", ".jar", ".drpy"))
                  or t == 3)
     if t == 1 and api.startswith("http"):
-        ok, method, _ = check_url_reachable(api, proxy=proxy)
+        ok, method, err = check_url_reachable(api, proxy=proxy)
+        kind, why = classify_unreachable(err)
+        note = "直连 CMS 接口可达性" if ok else "直连 CMS 接口不可达（%s）" % (why or "原因不明")
         return {"reachable": ok, "urls": [api] if ok else [],
-                "note": "直连 CMS 接口可达性", "method": method}
+                "note": note, "method": method, "kind": "" if ok else kind}
     if is_spider and base_dir:
         py_path = resolve_spider_path(base_dir, api)
         if py_path and os.path.isfile(py_path):
             return check_site_urls(py_path, max_urls=max_urls, proxy=proxy)
     if api.startswith("http"):
-        ok, method, _ = check_url_reachable(api, proxy=proxy)
+        ok, method, err = check_url_reachable(api, proxy=proxy)
+        kind, why = classify_unreachable(err)
+        note = "HTTP 接口可达性" if ok else "HTTP 接口不可达（%s）" % (why or "原因不明")
         return {"reachable": ok, "urls": [api] if ok else [],
-                "note": "HTTP 接口可达性", "method": method}
-    return {"reachable": None, "urls": [], "note": "无 URL 可检测", "method": ""}
+                "note": note, "method": method, "kind": "" if ok else kind}
+    return {"reachable": None, "urls": [], "note": "无 URL 可检测", "method": "", "kind": ""}
 
 
 def dead_source_keys(entries, url_map=None, file_map=None):

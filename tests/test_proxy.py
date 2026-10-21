@@ -407,7 +407,7 @@ P.set_active("")
 st_direct = SP.speed_test_url(BASE + "/s", samples=1)
 ok("直连测速仍可用", st_direct["reachable"], st_direct)
 
-# G6 JAR 体检：经代理
+# G6 JAR 检查：经代理
 P.set_active("http://127.0.0.1:%d" % cp)
 jr = JAR.check_jar_url(BASE + "/jar/app.jar")
 ok("jar 体检经代理 → 健康", jr["ok"] and jr["level"] == JAR.JAR_OK, jr)

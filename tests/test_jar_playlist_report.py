@@ -253,7 +253,7 @@ def test_report():
     eq("csv has header", "站点" in csv_text, True)
     eq("csv has name", "直连B" in csv_text, True)
 
-    # 带 JAR 体检（不可达）
+    # 带 JAR 检查（不可达）
     rep2 = build_report(sites, base_dir=None, do_speed=False, do_diag=False, do_jar=True)
     jrec = [r for r in rep2["records"] if r["jar"]][0]
     eq("report jar recorded", jrec["jar"]["level"] in ("unreachable", "http"), True)

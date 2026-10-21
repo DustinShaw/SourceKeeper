@@ -50,7 +50,7 @@ QDialog.exec = lambda self: 1
 import injector as I
 import pyinj_core as C
 
-# 放慢 URL 可达性检测（每项 +0.3s），保证「暂停/停止」测试有稳定的中途窗口，
+# 放慢连通性快检（每项 +0.3s），保证「暂停/停止」测试有稳定的中途窗口，
 # 避免 12 项在点击暂停前就跑完造成竞态失败。
 # ⚠️ 必须 patch **pyinj_core** 而非 injector：URL 检测走 pyinj_core.check_site_urls，
 # 其内部调用的是 pyinj_core 自己的 check_url_reachable（模块全局），

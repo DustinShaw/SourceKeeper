@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""智能分流导出对话框 + 筛选增强 + 网络体检 worker 的 GUI 测试（真实 PySide6 offscreen）。
+"""智能分流导出对话框 + 筛选增强 + 需代理筛选 worker 的 GUI 测试（真实 PySide6 offscreen）。
 
 覆盖本轮 P0/P1：
   · _SplitExportDialog：判定表、纯净版/完整版落盘、adult 叠加检测
@@ -150,7 +150,7 @@ ok("叠加检测后 s1 也判为成人（共 3）",
    sum(1 for r in range(sd2.table.rowCount())
        if "仅完整版" in sd2.table.item(r, 4).text()) == 3)
 
-print("== 7) 网络体检 worker（本地回环应正常→不需代理）==")
+print("== 7) 需代理筛选 worker（本地回环应正常→不需代理）==")
 w = _ProxyCheckWorker(dlg, entries, tmp)
 res = {}
 w.finished_map.connect(lambda m: res.update(m))
